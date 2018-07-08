@@ -182,62 +182,46 @@ int rsort_lsb_copy(void* dest, void* base, size_t arraylength, size_t size, char
 
 }
 
-int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes) {
-    unsigned count[256] = {0};
+/*
+ * Count should be zero initialized and have length 256
+ */
+int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
     //First Pass : Count Bucket Sizes
     void *b = base;
     size_t length = arraylength;
-    unsigned char key;
     struct timespec before, after;
     //    clock_gettime(CLOCK_MONOTONIC, &before);
-    while (arraylength--) {
-        key = getkey(b, msdbytes);
+    while (length--) {
+        unsigned char key = getkey(b, msdbytes);
         count[key]++;
         b += size;
     }
-    b -= size;
     //calculate bucket positions
     unsigned pos[256];
-    unsigned constCount[256];
     pos[0] = 0;
-    constCount[0] = count[0];
     int i;
     for (i = 0; i < 255; i++) {
         pos[i + 1] = pos[i] + count[i];
-        constCount[i + 1] = count[i + 1];
     }
     //Second Pass : Swap elements in-place into correct buckets
     char tmp[size];
 
     unsigned numswaps = 0, swapdistance = 0;
-    //we go backwards because the last element was most recently accessed so it might be in cache.
-    //    while (b > base) {
-    //        key = getkey(b, msdbytes);
-    //        void *newpos = base + pos[key] * size;
-    //        if (count[key]) {
-    //            //key is not in correct position. Swap
-    //            memcpy(tmp, b, size);
-    //            memcpy(b, newpos, size);
-    //            memcpy(newpos, tmp, size);
-    //            count[key]--;
-    //            pos[key]++;
-    //            numswaps++;
-    //            swapdistance += (newpos > b ? newpos - b : b - newpos);
-    //        } else {
-    //            //seems this bucket is sorted. Move up
-    //            b -= size;
-    //        }
-    //    }
     b = base;
-    while (b < base + length) {
-        key = getkey(b, msdbytes);
+    while (b < base + size * arraylength) {
+        unsigned char key = getkey(b, msdbytes);
         void *newpos = base + pos[key] * size;
-
+        //prefetch actually reduced cache efficiency
+        //        __builtin_prefetch(newpos, 0, 0);
+        //        __builtin_prefetch(newpos, 1, 0);
         if (count[key] == 0) {
             //seems this bucket is sorted. Move up
+            //            printf("DO we ever reach here slash en?\n");
             b += size;
         } else if (newpos == b) {
             count[key]--;
+            pos[key]++;
+            numswaps++;
             b += size;
         } else {
             //key is not in correct position. Swap
@@ -247,22 +231,27 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
             count[key]--;
             pos[key]++;
             numswaps++;
-            swapdistance += (newpos > b ? newpos - b : b - newpos);
+            //            numswaps++;
+            //            swapdistance += (newpos > b ? newpos - b : b - newpos);
         }
+        //        printInts(base, arraylength);
+        swapdistance++;
     }
+//    printf("%u count--, %u loops\n", numswaps, swapdistance);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
     if (msdbytes == 0) {
         return;
     }
-    unsigned position = 0;
-    for (i = 0; i < 256; i++) {
-        if (constCount[i] > 1) {
-//            printf("RADIX %u : BUCKET %3d : COUNT %4d\n", msdbytes - 1, i, constCount[i]);
-            rsort_msb(base + position*size, constCount[i], size, getkey, msdbytes - 1);
+    unsigned counti = arraylength;
+    for (i = 255; i >= 0; i--) {
+        counti = counti - pos[i];
+        if (counti > 1) {
+            //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
+            rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes - 1, count);
         }
-        position += constCount[i];
+        counti = pos[i];
     }
 
 
