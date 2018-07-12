@@ -16,9 +16,11 @@
 /*
  * 
  */
+unsigned long keycalls=0;
 unsigned char intkey(void *record, unsigned radix) {
     int* i = (int*) record;
     unsigned char c = (unsigned char) (*i >> radix * 8);
+    keycalls++;
     return c;
 }
 
@@ -43,10 +45,11 @@ int* randomInts(size_t length) {
 }
 
 #define TYPE int
-
+unsigned long compares = 0;
 static int compare(const void *a, const void *b) {
     const TYPE da = *((const TYPE *) a);
     const TYPE db = *((const TYPE *) b);
+    compares++;
     return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
@@ -71,15 +74,15 @@ static void memaccesstest(char sort, size_t length) {
     switch (sort) {
         case 't':
             timeit("TIM", timsort(larger, length, sizeof (int), compare))
-            printf("compares: %'lu\n");
+            printf("compares: %'lu\n",compares);
             break;
         case 'r':
             timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
-            printf("keycalls: %'lu\n");
+            printf("keycalls: %'lu\n", keycalls);
             break;
         case 'q':
             timeit("QCK", qsort(larger, length, sizeof (int), compare))
-            printf("compares: %'lu\n");
+            printf("compares: %'lu\n", compares);
 
             break;
             //    printf("\nRSORT COPY\n");
