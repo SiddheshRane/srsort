@@ -217,6 +217,9 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
      * location and we would traverse the remaining sorted array to check whether it
      * is sorted. But we already have that information using the counts array.
      * We thus advance through the array skipping sorted sections using counts and pos.
+     * UPDATE: jumping on counts has actually made the code slower, tested on random numbers
+     * from size 100 to 2M. The instruction count has increased despite the reduced key calls.
+     * Branch prediction misses have also increased.
      */
     i = 0;
     while (i < 256) {
@@ -246,7 +249,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         //        printInts(base, arraylength);
         swapdistance++;
     }
-        printf("%u count--, %u loops\n", numswaps, swapdistance);
+//    printf("%u count--, %u loops\n", numswaps, swapdistance);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
