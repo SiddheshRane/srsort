@@ -237,19 +237,36 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         //        printInts(base, arraylength);
         swapdistance++;
     }
-//    printf("%u count--, %u loops\n", numswaps, swapdistance);
+    //    printf("%u count--, %u loops\n", numswaps, swapdistance);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
     if (msdbytes == 0) {
         return;
     }
+    msdbytes--;
     unsigned counti = arraylength;
     for (i = 255; i >= 0; i--) {
         counti = counti - pos[i];
         if (counti > 1) {
-            //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-            rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes - 1, count);
+            if (counti == 2) {
+                unsigned radix = msdbytes;
+                void *a = base + pos[i] * size;
+                do {
+                    unsigned char akey = getkey(a, radix);
+                    unsigned char bkey = getkey(a + size, radix);
+                    if (akey > bkey) {
+                        //swap and return
+                        memcpy(tmp, a, size);
+                        memcpy(a, a + size, size);
+                        memcpy(a + size, tmp, size);
+                        break;
+                    }
+                } while (radix--);
+            } else {
+                //                printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
+                rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
+            }
         }
         counti = pos[i];
     }
