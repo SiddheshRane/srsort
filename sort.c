@@ -207,22 +207,31 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     char tmp[size];
 
     unsigned numswaps = 0, swapdistance = 0;
-    b = base;
-    while (b < base + size * arraylength) {
+    /* We proceed sequentially through the array. A record encounterd is swapped
+     * into its correct location, bringing the previous occupant record now into
+     * our consideration. Same is repeated for this record too until we encounter
+     * record which is in its correct position. In this case we advance forward in
+     * the array.
+     * Previously we would check the element key to know whether it is in its correct
+     * position. But in the worst case, the whole array could be sorted on the first 
+     * location and we would traverse the remaining sorted array to check whether it
+     * is sorted. But we already have that information using the counts array.
+     * We thus advance through the array skipping sorted sections using counts and pos.
+     */
+    i = 0;
+    while (i < 256) {
+        if (count[i] == 0) {
+            i++;
+            continue;
+        }
+        b = base + pos[i] * size;
         unsigned char key = getkey(b, msdbytes);
         void *newpos = base + pos[key] * size;
-        //prefetch actually reduced cache efficiency
-        //        __builtin_prefetch(newpos, 0, 0);
-        //        __builtin_prefetch(newpos, 1, 0);
-        if (count[key] == 0) {
-            //seems this bucket is sorted. Move up
-            //            printf("DO we ever reach here slash en?\n");
-            b += size;
-        } else if (newpos == b) {
+        if (newpos == b) {
+            //unbeknownst to us, the record we have encountered is actually where it should be
             count[key]--;
             pos[key]++;
             numswaps++;
-            b += size;
         } else {
             //key is not in correct position. Swap
             memcpy(tmp, b, size);
@@ -237,7 +246,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         //        printInts(base, arraylength);
         swapdistance++;
     }
-    //    printf("%u count--, %u loops\n", numswaps, swapdistance);
+        printf("%u count--, %u loops\n", numswaps, swapdistance);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
