@@ -220,14 +220,19 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
      * UPDATE: jumping on counts has actually made the code slower, tested on random numbers
      * from size 100 to 2M. The instruction count has increased despite the reduced key calls.
      * Branch prediction misses have also increased.
+     * Contrary to our assumption, what has happened is that our loop over N records is
+     * replaced with <N but >= 255 loop. So as we recurse deeper the value of N drastically reduces
+     * so N<<256. 
      */
     i = 0;
-    while (i < 256) {
+    b = base;
+    while (i < 255) { //if the first 255 buckets are sorted, then the last one is necessarily sorted
         if (count[i] == 0) {
             i++;
+            b = base + pos[i] * size;
+            swapdistance++;
             continue;
         }
-        b = base + pos[i] * size;
         unsigned char key = getkey(b, msdbytes);
         void *newpos = base + pos[key] * size;
         if (newpos == b) {
@@ -235,6 +240,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
             count[key]--;
             pos[key]++;
             numswaps++;
+            b += size;
         } else {
             //key is not in correct position. Swap
             memcpy(tmp, b, size);
@@ -249,7 +255,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         //        printInts(base, arraylength);
         swapdistance++;
     }
-//    printf("%u count--, %u loops\n", numswaps, swapdistance);
+    printf("%u count--, %u loops\n", numswaps, swapdistance);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
