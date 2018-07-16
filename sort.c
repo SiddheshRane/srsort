@@ -5,7 +5,8 @@
 #include <string.h>
 #include <time.h>
 #define KEY_SIZE 32
-
+extern unsigned totloops, loop0, loop1;
+extern unsigned long loop256;
 /*
  * GLOBALS.
  */
@@ -82,22 +83,16 @@ int sort_main(int argc, char **argv) {
 
 int rsort_lsb(void* base, size_t arraylength, size_t size, char (*getkey)(const void* record, unsigned radix), unsigned radix) {
     unsigned count[256] = {0};
-    //First Pass : Count Bucket Sizes
-    void *b = base;
+    //First Pass : Count Bucket Sizes; we go backwards
+    void *b = base + (arraylength - 1) * size;
     unsigned char key;
-    struct timespec before, after;
-    clock_gettime(CLOCK_MONOTONIC, &before);
-    while (arraylength--) {
+    size_t length = arraylength;
+    while (length--) {
         key = getkey(b, radix);
         count[key]++;
-        b += size;
+        b -= size;
     }
-    clock_gettime(CLOCK_MONOTONIC, &after);
-    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);
-    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);
-    printf("Count took   %2lus %11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));
-
-    b -= size;
+    b = base;
     //calculate bucket positions
     unsigned pos[256];
     pos[0] = 0;
@@ -108,32 +103,33 @@ int rsort_lsb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
 
     //Second Pass : Swap elements in-place into correct buckets
     char tmp[size];
-    clock_gettime(CLOCK_MONOTONIC, &before);
-
     unsigned numswaps = 0, swapdistance = 0;
-    //we go backwards because the last element was most recently accessed so it might be in cache.
-    while (b > base) {
-        key = getkey(b, radix);
-        if (count[key]) {
+    while (b < base + arraylength * size) { //if the first 255 buckets are sorted, then the last one is necessarily sorted
+        unsigned char key = getkey(b, radix);
+        void *newpos = base + pos[key] * size;
+        if (count[key] == 0) {
+            //entire bucket is sorted. directly jump to next bucket
+            if (key == 255) {
+                break;
+            }
+            b = base + pos[key + 1] * size;
+            totloops++;
+            continue;
+        }
+        if (newpos == b) {
+            //unbeknownst to us, the record we have encountered is actually where it should be
+            b += size;
+        } else {
             //key is not in correct position. Swap
-            void *newpos = base + pos[key] * size;
             memcpy(tmp, b, size);
             memcpy(b, newpos, size);
             memcpy(newpos, tmp, size);
-            count[key]--;
-            pos[key]++;
-            numswaps++;
-            swapdistance += (newpos > b ? newpos - b : b - newpos);
-        } else {
-            //seems this bucket is sorted. Move up
-            b -= size;
         }
+        count[key]--;
+        pos[key]++;
+        numswaps++;
+        totloops++;
     }
-    clock_gettime(CLOCK_MONOTONIC, &after);
-    printf("shuffle took %2lus %11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));
-    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);
-    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);
-    printf("%u swaps, %u distance\n", numswaps, swapdistance / size);
 }
 
 int rsort_lsb_copy(void* dest, void* base, size_t arraylength, size_t size, char (*getkey)(const void* record, unsigned radix), unsigned radix) {
@@ -189,8 +185,6 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     //First Pass : Count Bucket Sizes
     void *b = base;
     size_t length = arraylength;
-    struct timespec before, after;
-    //    clock_gettime(CLOCK_MONOTONIC, &before);
     while (length--) {
         unsigned char key = getkey(b, msdbytes);
         count[key]++;
@@ -204,10 +198,10 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         pos[i + 1] = pos[i] + count[i];
     }
     //Second Pass : Swap elements in-place into correct buckets
-    char tmp[size];
+    char tmp[size]; //for swapping
 
-    unsigned numswaps = 0, swapdistance = 0;
-    /* We proceed sequentially through the array. A record encounterd is swapped
+    unsigned numswaps = 0, loops = 0;
+    /* We proceed sequentially through the array. A record encountered is swapped
      * into its correct location, bringing the previous occupant record now into
      * our consideration. Same is repeated for this record too until we encounter
      * record which is in its correct position. In this case we advance forward in
@@ -224,38 +218,158 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
      * replaced with <N but >= 255 loop. So as we recurse deeper the value of N drastically reduces
      * so N<<256. 
      */
-    i = 0;
     b = base;
-    while (i < 255) { //if the first 255 buckets are sorted, then the last one is necessarily sorted
-        if (count[i] == 0) {
-            i++;
-            b = base + pos[i] * size;
-            swapdistance++;
-            continue;
-        }
+    //    void* lastBucketStart = base + pos[lastNonZeroBucket] * size;
+    //    printf("pos[%d]=%u \n", lastNonZeroBucket,pos[lastNonZeroBucket]);
+    while (b < base + arraylength * size) {
         unsigned char key = getkey(b, msdbytes);
         void *newpos = base + pos[key] * size;
+        if (count[key] == 0) {
+            //entire bucket is sorted. directly jump to next bucket
+            if (key == 255) {
+                break;
+            }
+            b = base + pos[key + 1] * size;
+            loops++;
+            continue;
+        }
         if (newpos == b) {
             //unbeknownst to us, the record we have encountered is actually where it should be
-            count[key]--;
-            pos[key]++;
-            numswaps++;
             b += size;
         } else {
             //key is not in correct position. Swap
             memcpy(tmp, b, size);
             memcpy(b, newpos, size);
             memcpy(newpos, tmp, size);
-            count[key]--;
-            pos[key]++;
-            numswaps++;
-            //            numswaps++;
-            //            swapdistance += (newpos > b ? newpos - b : b - newpos);
         }
+        count[key]--;
+        pos[key]++;
+        numswaps++;
+        //            numswaps++;
+        //            swapdistance += (newpos > b ? newpos - b : b - newpos);
+
         //        printInts(base, arraylength);
-        swapdistance++;
+        loops++;
     }
-    printf("%u count--, %u loops\n", numswaps, swapdistance);
+    totloops += loops;
+    //    printf("%u count--, %u loops for %lu numbers\n", numswaps, loops,arraylength);
+    //    clock_gettime(CLOCK_MONOTONIC, &after);
+    //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
+    //    printInts(base,length);
+    if (msdbytes == 0) {
+        return 0; //we have finished all radixes
+    }
+    msdbytes--;
+    unsigned counti = arraylength;
+    loops = 0;
+    for (i = 255; i >= 0; i--) {
+        counti = counti - pos[i];
+        if (counti == 0) {
+            loop0++;
+        } else if (counti == 1) {
+            loop1++;
+        } else if (counti == 2) { //compare and swap
+            unsigned radix = msdbytes;
+            void *a = base + pos[i] * size;
+            do {
+                unsigned char akey = getkey(a, radix);
+                unsigned char bkey = getkey(a + size, radix);
+                if (akey > bkey) {
+                    //swap and return
+                    memcpy(tmp, a, size);
+                    memcpy(a, a + size, size);
+                    memcpy(a + size, tmp, size);
+                    break;
+                }
+            } while (radix--);
+        } else {
+//            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
+            loop256++;
+            rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
+        }
+        counti = pos[i];
+    }
+
+}
+
+int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
+    //First Pass : Count Bucket Sizes
+    void *b = base;
+    size_t length = arraylength;
+    while (length--) {
+        unsigned char key = getkey(b, msdbytes / 2);
+        if (msdbytes & 1) key = key >> 4; //take upper 4 bits for odd msdbytes
+        key = key & 0xF;
+        count[key]++;
+        b += size;
+    }
+    //calculate bucket positions
+    unsigned pos[16];
+    pos[0] = 0;
+    int i;
+    for (i = 0; i < 15; i++) {
+        pos[i + 1] = pos[i] + count[i];
+    }
+    //Second Pass : Swap elements in-place into correct buckets
+    char tmp[size];
+
+    unsigned numswaps = 0, loops = 0;
+    /* We proceed sequentially through the array. A record encountered is swapped
+     * into its correct location, bringing the previous occupant record now into
+     * our consideration. Same is repeated for this record too until we encounter
+     * record which is in its correct position. In this case we advance forward in
+     * the array.
+     * Previously we would check the element key to know whether it is in its correct
+     * position. But in the worst case, the whole array could be sorted on the first 
+     * location and we would traverse the remaining sorted array to check whether it
+     * is sorted. But we already have that information using the counts array.
+     * We thus advance through the array skipping sorted sections using counts and pos.
+     * UPDATE: jumping on counts has actually made the code slower, tested on random numbers
+     * from size 100 to 2M. The instruction count has increased despite the reduced key calls.
+     * Branch prediction misses have also increased.
+     * Contrary to our assumption, what has happened is that our loop over N records is
+     * replaced with <N but >= 255 loop. So as we recurse deeper the value of N drastically reduces
+     * so N<<256. 
+     */
+    b = base;
+    //    void* lastBucketStart = base + pos[lastNonZeroBucket] * size;
+    //    printf("pos[%d]=%u \n", lastNonZeroBucket,pos[lastNonZeroBucket]);
+    while (b < base + arraylength * size) {
+        unsigned char key = getkey(b, msdbytes);
+        if (key & 1) {
+            key >>= 4;
+        }
+        key &= 0xF;
+        void *newpos = base + pos[key] * size;
+        if (count[key] == 0) {
+            //entire bucket is sorted. directly jump to next bucket
+            if (key == 15) {
+                break;
+            }
+            b = base + pos[key + 1] * size;
+            loops++;
+            continue;
+        }
+        if (newpos == b) {
+            //unbeknownst to us, the record we have encountered is actually where it should be
+            b += size;
+        } else {
+            //key is not in correct position. Swap
+            memcpy(tmp, b, size);
+            memcpy(b, newpos, size);
+            memcpy(newpos, tmp, size);
+        }
+        count[key]--;
+        pos[key]++;
+        numswaps++;
+        //            numswaps++;
+        //            swapdistance += (newpos > b ? newpos - b : b - newpos);
+
+        //        printInts(base, arraylength);
+        loops++;
+    }
+    totloops += loops;
+    //    printf("%u count--, %u loops for %lu numbers\n", numswaps, loops,arraylength);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
     //    printInts(base,length);
@@ -264,15 +378,27 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     }
     msdbytes--;
     unsigned counti = arraylength;
-    for (i = 255; i >= 0; i--) {
+    loops = 0;
+    for (i = 15; i >= 0; i--) {
         counti = counti - pos[i];
-        if (counti > 1) {
+        if (counti == 0) {
+            loop0++;
+        } else if (counti == 1) {
+            loop1++;
+        } else
+            if (1) {
             if (counti == 2) {
                 unsigned radix = msdbytes;
                 void *a = base + pos[i] * size;
                 do {
                     unsigned char akey = getkey(a, radix);
                     unsigned char bkey = getkey(a + size, radix);
+                    if (msdbytes & 1) {
+                        akey >>= 4;
+                        bkey >>= 4;
+                    }
+                    akey &= 0xF;
+                    bkey &= 0xF;
                     if (akey > bkey) {
                         //swap and return
                         memcpy(tmp, a, size);
@@ -283,11 +409,11 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
                 } while (radix--);
             } else {
                 //                printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-                rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
+                rsort_msb16(base + pos[i] * size, counti, size, getkey, msdbytes, count);
             }
+            loop256++;
         }
         counti = pos[i];
     }
-
 
 }

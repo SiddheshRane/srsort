@@ -16,7 +16,8 @@
 /*
  * 
  */
-unsigned long keycalls=0;
+unsigned long keycalls = 0;
+
 unsigned char intkey(void *record, unsigned radix) {
     int* i = (int*) record;
     unsigned char c = (unsigned char) (*i >> radix * 8);
@@ -46,6 +47,7 @@ int* randomInts(size_t length) {
 
 #define TYPE int
 unsigned long compares = 0;
+
 static int compare(const void *a, const void *b) {
     const TYPE da = *((const TYPE *) a);
     const TYPE db = *((const TYPE *) b);
@@ -62,10 +64,23 @@ static int compare(const void *a, const void *b) {
     printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
     
 
+unsigned totloops = 0, loop0 = 0, loop1 = 0;
+unsigned long loop256 = 0;
+
+int isSorted(int* list, int size){
+    int i;
+    for (i = 1; i < size; i++) {
+        if (list[i] < list[i-1]) {
+            return 0;
+        }
+    }
+    return 1; //sorted
+}
+
 static void memaccesstest(char sort, size_t length) {
     int *larger = randomInts(length);
     //    int *dest = malloc(sizeof (int)*length);
-    //        printInts(larger, (length < 20 ? length : 20));
+    //            printInts(larger, (length < 20 ? length : 20));
 
     #define CLOCK_MONOTONIC 1
     #define nanodiff(after,before) ( (before)< (after) ? (after)-(before) : 1000000000L - ((before)-(after)) )
@@ -74,27 +89,31 @@ static void memaccesstest(char sort, size_t length) {
     switch (sort) {
         case 't':
             timeit("TIM", timsort(larger, length, sizeof (int), compare))
-            printf("compares: %'lu\n",compares);
+            printf("compares: %'lu\n", compares);
             break;
         case 'r':
             timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
-            printf("keycalls: %'lu\n", keycalls);
+            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
+            printf("loop0: %u loop1: %u 0+1: %u loop256: %u\n", loop0, loop1, loop0 + loop1, loop256);
+            break;
+        case 'x':
+            timeit("SID", unsigned count16[16] = {0}; rsort_msb16(larger, length, sizeof (int), intkey, 7, count16))
+            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
+            printf("loop0: %u loop1: %u 0+1: %u loop256: %u\n", loop0, loop1, loop0 + loop1, loop256);
             break;
         case 'q':
             timeit("QCK", qsort(larger, length, sizeof (int), compare))
             printf("compares: %'lu\n", compares);
-
             break;
-            //    printf("\nRSORT COPY\n");
-            //    clock_gettime(CLOCK_MONOTONIC, &before);
-            //    rsort_lsb_copy(dest, larger, length, sizeof (int), intkey, 0);
-            //    rsort_lsb_copy(larger, dest, length, sizeof (int), intkey, 1);
-            //    rsort_lsb_copy(dest, larger, length, sizeof (int), intkey, 2);
-            //    rsort_lsb_copy(larger, dest, length, sizeof (int), intkey, 3);
-            //    clock_gettime(CLOCK_MONOTONIC, &after);
-            //    printf("rsort   took %2lus %11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));
-            //    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);
-            //    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);
+        case 'l':
+            timeit("LSB",{
+                rsort_lsb(larger, length, sizeof (int), intkey, 0);
+                rsort_lsb(larger, length, sizeof (int), intkey, 1);
+                rsort_lsb(larger, length, sizeof (int), intkey, 2);
+                rsort_lsb(larger, length, sizeof (int), intkey, 3);
+            });
+            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
+
     }
     free(larger);
 }
@@ -124,7 +143,7 @@ int main(int argc, char** argv) {
     //    littleendiannesstest();
     setlocale(LC_ALL, "");
     char sorttype = 'r';
-    size_t length = 100;
+    size_t length = 128.;
     if (argc > 1) {
         sorttype = argv[1][0];
     }
