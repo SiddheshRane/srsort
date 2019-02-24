@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <locale.h>
 #include <time.h>
+#include <string.h>
 #include "timsort/timsort.h"
 
 /*
@@ -35,7 +36,7 @@ void printInts(int *arr, size_t size) {
 }
 
 int* randomInts(size_t length) {
-    srandom(1);
+    srandom(1789);
     int* ints = malloc(sizeof (int) * length);
     int *i = ints;
     while (length--) {
@@ -67,10 +68,10 @@ static int compare(const void *a, const void *b) {
 unsigned totloops = 0, loop0 = 0, loop1 = 0;
 unsigned long loop256 = 0;
 
-int isSorted(int* list, int size){
+int isSorted(int* list, int size) {
     int i;
     for (i = 1; i < size; i++) {
-        if (list[i] < list[i-1]) {
+        if (list[i] < list[i - 1]) {
             return 0;
         }
     }
@@ -139,8 +140,32 @@ static void littleendiannesstest() {
     printf("char limit:%d, hex:%x, charr[limit]=%c\n", limit, limit, charr[limit]);
 }
 
+typedef struct ps256 {
+    //powerset 256: contains 256 bits to indicate presence
+    unsigned long b[4];
+} ps256;
+
+static void ps256test() {
+    ps256 ps = {0};
+    int i;
+    printf("num set | set bits\n");
+    for (i = 0; i < 256; i++) {
+        setbit(&ps, i);
+        printf("%3d %3d | ", i, numset(&ps));
+        print256(&ps);
+    }
+    printf("--- --- | \n");
+    memset(&ps, 0, sizeof(ps));
+    for (i = 255; i >= 0 ; i--) {
+        setbit(&ps, i);
+        printf("%3d %3d | ", i, getnextset(&ps, 0));
+        print256(&ps);
+    }
+}
+
 int main(int argc, char** argv) {
     //    littleendiannesstest();
+    ps256test(); fflush(stdout); return 0;
     setlocale(LC_ALL, "");
     char sorttype = 'r';
     size_t length = 128.;

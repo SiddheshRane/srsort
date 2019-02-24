@@ -3,7 +3,9 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <string.h>
+#include "sys/types.h"
 #include <time.h>
+#include <stdlib.h>
 #define KEY_SIZE 32
 extern unsigned totloops, loop0, loop1;
 extern unsigned long loop256;
@@ -178,18 +180,68 @@ int rsort_lsb_copy(void* dest, void* base, size_t arraylength, size_t size, char
 
 }
 
+#define ffs(x) __builtin_ffsll(x)
+#define popcnt(x) __builtin_popcountl(x) 
+
+typedef struct ps256 {
+    //powerset 256: contains 256 bits to indicate presence
+    u_int64_t b[4];
+} ps256;
+
+void print256(ps256*ps) {
+    char buff[128];
+    snprintf(buff, 128, "%016lx %016lx %016lx %016lx\n", ps->b[3], ps->b[2], ps->b[1], ps->b[0]);
+    char *c = buff;
+    while (*c) {
+        if (*c == '0') {
+            *c = '_';
+        }
+        c++;
+    }
+    puts(buff);
+}
+
+void setbit(ps256 *ps, unsigned char index) {
+    ps->b[index >> 6] |= 1ul << (index & 0x3F);
+}
+
+int numset(ps256 *ps) {
+    int i;
+    int num = 0;
+    for (i = 0; i < 4; i++) {
+        num += popcnt(ps->b[i]);
+    }
+    return num;
+}
+
+int getnextset(ps256 *ps, unsigned char from) {
+    //find the byte that contained the lastset, then search from ahead
+    int first;
+    switch ((from) >> 6) {
+        case 0: first = ffs(ps->b[0]); if(first) return first;
+        case 1: first = ffs(ps->b[1]); if(first) return first+64;
+        case 2: first = ffs(ps->b[2]); if(first) return first+128;
+        case 3: first = ffs(ps->b[3]); if(first) return first+192;
+    }
+    return -1;
+}
+
 /*
  * Count should be zero initialized and have length 256
  */
 int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
     //First Pass : Count Bucket Sizes
+    ps256 ps = {0};
     void *b = base;
     size_t length = arraylength;
     while (length--) {
         unsigned char key = getkey(b, msdbytes);
         count[key]++;
+        setbit(&ps, key);
         b += size;
     }
+    printf("set %d | ", numset(&ps)); //number of bits that are set
+    print256(&ps);
     //calculate bucket positions
     unsigned pos[256];
     pos[0] = 0;
@@ -283,7 +335,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
                 }
             } while (radix--);
         } else {
-//            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
+            //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
             loop256++;
             rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
         }
