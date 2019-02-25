@@ -148,24 +148,36 @@ typedef struct ps256 {
 static void ps256test() {
     ps256 ps = {0};
     int i;
-    printf("num set | set bits\n");
-    for (i = 0; i < 256; i++) {
-        setbit(&ps, i);
-        printf("%3d %3d | ", i, numset(&ps));
-        print256(&ps);
+//        printf("num set | set bits\n");
+//        for (i = 0; i < 256; i++) {
+//            setbit(&ps, i);
+//            printf("%3d %3d | ", i, getnextset(&ps, i));
+//            print256(&ps);
+//        }
+//        printf("--- --- | \n");
+//        memset(&ps, 0, sizeof(ps));
+//        for (i = 255; i >= 0 ; i--) {
+//            setbit(&ps, i);
+//            printf("%3d %3d | ", i, getnextset(&ps, i));
+//            print256(&ps);
+//        }
+    ps256 psrand = {0x1, 0x2, 0x3, 0x4};
+    int nex = 0;
+
+    print256(&psrand);
+    while ((nex = getnextset(&psrand, nex)) != -1) {
+        printf("%d ", nex);
+        print256(&psrand);
+
     }
-    printf("--- --- | \n");
-    memset(&ps, 0, sizeof(ps));
-    for (i = 255; i >= 0 ; i--) {
-        setbit(&ps, i);
-        printf("%3d %3d | ", i, getnextset(&ps, 0));
-        print256(&ps);
-    }
+
 }
 
 int main(int argc, char** argv) {
     //    littleendiannesstest();
-    ps256test(); fflush(stdout); return 0;
+    ps256test();
+    fflush(stdout);
+    return 0;
     setlocale(LC_ALL, "");
     char sorttype = 'r';
     size_t length = 128.;

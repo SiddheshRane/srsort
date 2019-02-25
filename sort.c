@@ -214,14 +214,53 @@ int numset(ps256 *ps) {
     return num;
 }
 
+/**
+ * find the index of the rightmost set bit. 
+ * Modifies ps by zeroing the set bit
+ * @return 0 to 255 if a bit is set at that index; -1 if no bit set
+ **/
 int getnextset(ps256 *ps, unsigned char from) {
     //find the byte that contained the lastset, then search from ahead
-    int first;
-    switch ((from) >> 6) {
-        case 0: first = ffs(ps->b[0]); if(first) return first;
-        case 1: first = ffs(ps->b[1]); if(first) return first+64;
-        case 2: first = ffs(ps->b[2]); if(first) return first+128;
-        case 3: first = ffs(ps->b[3]); if(first) return first+192;
+    int first, searchfrom = 0;
+    unsigned long set;
+    static void* startfromlong[] = {
+        &&x___,
+        &&_x__,
+        &&__x_,
+        &&___x,
+    };
+    goto *startfromlong[from >> 6];
+x___:
+    set = ps->b[0];
+    set = set & -set; //last set bit is active in this, rest all zero
+    if (set) {
+        first = ffs(set);
+        ps->b[0] -= set;
+        return first - 1;
+    }
+_x__:
+    set = ps->b[1];
+    set = set & -set; //last set bit is active in this, rest all zero
+    if (set) {
+        first = ffs(set);
+        ps->b[1] -= set;
+        return first + 63;
+    }
+__x_:
+    set = ps->b[2];
+    set = set & -set; //last set bit is active in this, rest all zero
+    if (set) {
+        first = ffs(set);
+        ps->b[2] -= set;
+        return first + 127;
+    }
+___x:
+    set = ps->b[3];
+    set = set & -set; //last set bit is active in this, rest all zero
+    if (set) {
+        first = ffs(set);
+        ps->b[3] -= set;
+        return first + 191;
     }
     return -1;
 }
