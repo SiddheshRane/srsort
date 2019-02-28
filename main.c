@@ -29,7 +29,7 @@ unsigned char intkey(void *record, unsigned radix) {
 void printInts(int *arr, size_t size) {
     printf("[ ");
     while (size--) {
-        printf("%04x ", *arr);
+        printf("%x ", *arr);
         arr++;
     }
     printf("]\n");
@@ -175,9 +175,7 @@ static void ps256test() {
 
 int main(int argc, char** argv) {
     //    littleendiannesstest();
-    ps256test();
-    fflush(stdout);
-    return 0;
+//    ps256test();
     setlocale(LC_ALL, "");
     char sorttype = 'r';
     size_t length = 128.;
