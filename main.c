@@ -20,10 +20,22 @@
 unsigned long keycalls = 0;
 
 unsigned char intkey(void *record, unsigned radix) {
-    int* i = (int*) record;
-    unsigned char c = (unsigned char) (*i >> radix * 8);
+    unsigned long i = (unsigned long) (*(unsigned int*) record);
+    unsigned char c = (unsigned char) (i >> (radix * 8u));
     keycalls++;
     return c;
+}
+
+/**
+ * Returns 2 bytes of the given integer starting from byte number byteindex in 
+ * the source integer.
+ * @param record a pointer to an integer
+ * @param byteindex most significant bit is 3, least is 0
+ * @return 
+ */
+unsigned short wordkey(void *record, unsigned byteindex) {
+    unsigned int i = *(int*) record;
+    return i << (byteindex * 8);
 }
 
 void printInts(int *arr, size_t size) {
@@ -56,17 +68,20 @@ static int compare(const void *a, const void *b) {
     return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
-#define timeit(sortname, sortcall) \
-    clock_gettime(CLOCK_MONOTONIC, &before);\
-    sortcall;\
-    clock_gettime(CLOCK_MONOTONIC, &after);\
-    printf(sortname "   took %2lus %'11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
-    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
-    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
-    
+//#define timeit(sortname, sortcall) \
+//    clock_gettime(CLOCK_MONOTONIC, &before);\
+//    sortcall;\
+//    clock_gettime(CLOCK_MONOTONIC, &after);\
+//    printf(sortname "   took %2lus %'11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
+//    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
+//    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
+//    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO");\
 
-unsigned totloops = 0, loop0 = 0, loop1 = 0;
-unsigned long loop256 = 0;
+#define timeit(sortname, sortcall) {sortcall;}
+
+
+unsigned selfcalls = 0, counts = 0, poscalc = 0;
+unsigned long shuffles = 0;
 
 int isSorted(int* list, int size) {
     int i;
@@ -78,7 +93,7 @@ int isSorted(int* list, int size) {
     return 1; //sorted
 }
 
-static void memaccesstest(char sort, size_t length) {
+static void sortFunctionTest(char sort, size_t length) {
     int *larger = randomInts(length);
     //    int *dest = malloc(sizeof (int)*length);
     //            printInts(larger, (length < 20 ? length : 20));
@@ -94,13 +109,18 @@ static void memaccesstest(char sort, size_t length) {
             break;
         case 'r':
             timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
-            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
-            printf("loop0: %u loop1: %u 0+1: %u loop256: %u\n", loop0, loop1, loop0 + loop1, loop256);
+            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
+            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+            break;
+        case 's':
+            timeit("siD", rsort(larger, sizeof (int), length, intkey, 4))
+            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
+            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
             break;
         case 'x':
             timeit("SID", unsigned count16[16] = {0}; rsort_msb16(larger, length, sizeof (int), intkey, 7, count16))
-            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
-            printf("loop0: %u loop1: %u 0+1: %u loop256: %u\n", loop0, loop1, loop0 + loop1, loop256);
+            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
+            printf("counts: %u poscalcs: %u 0+1: %u shufflesx   : %u\n", counts, poscalc, counts + poscalc, shuffles);
             break;
         case 'q':
             timeit("QCK", qsort(larger, length, sizeof (int), compare))
@@ -113,7 +133,7 @@ static void memaccesstest(char sort, size_t length) {
                 rsort_lsb(larger, length, sizeof (int), intkey, 2);
                 rsort_lsb(larger, length, sizeof (int), intkey, 3);
             });
-            printf("keycalls: %'lu loops: %u\n", keycalls, totloops);
+            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
 
     }
     free(larger);
@@ -129,9 +149,10 @@ static void littleendiannesstest() {
     printf("char[2] : %x\n", c2buf[2]);
     printf("char[3] : %x\n", c2buf[3]);
     printf("intkey[0] : %x\n", intkey(&buf, 0));
-    printf("intkey[0] : %x\n", intkey(&buf, 1));
-    printf("intkey[0] : %x\n", intkey(&buf, 2));
-    printf("intkey[0] : %x\n", intkey(&buf, 3));
+    printf("intkey[1] : %x\n", intkey(&buf, 1));
+    printf("intkey[2] : %x\n", intkey(&buf, 2));
+    printf("intkey[3] : %x\n", intkey(&buf, 3));
+    printf("intkey[4] : %x\n", intkey(&buf, 4));
     //    sort_main(argc, argv);
 
     unsigned char limit = 129;
@@ -145,22 +166,22 @@ typedef struct ps256 {
     unsigned long b[4];
 } ps256;
 
-static void ps256test() {
+static void ps256CorrectnessTest() {
     ps256 ps = {0};
     int i;
-//        printf("num set | set bits\n");
-//        for (i = 0; i < 256; i++) {
-//            setbit(&ps, i);
-//            printf("%3d %3d | ", i, getnextset(&ps, i));
-//            print256(&ps);
-//        }
-//        printf("--- --- | \n");
-//        memset(&ps, 0, sizeof(ps));
-//        for (i = 255; i >= 0 ; i--) {
-//            setbit(&ps, i);
-//            printf("%3d %3d | ", i, getnextset(&ps, i));
-//            print256(&ps);
-//        }
+    //        printf("num set | set bits\n");
+    //        for (i = 0; i < 256; i++) {
+    //            setbit(&ps, i);
+    //            printf("%3d %3d | ", i, getnextset(&ps, i));
+    //            print256(&ps);
+    //        }
+    //        printf("--- --- | \n");
+    //        memset(&ps, 0, sizeof(ps));
+    //        for (i = 255; i >= 0 ; i--) {
+    //            setbit(&ps, i);
+    //            printf("%3d %3d | ", i, getnextset(&ps, i));
+    //            print256(&ps);
+    //        }
     ps256 psrand = {0x1, 0x2, 0x3, 0x4};
     int nex = 0;
 
@@ -173,20 +194,84 @@ static void ps256test() {
 
 }
 
+static ps256 p = {0};
+
+static void ps256PerformanceTest(size_t length, int*base) {
+    ps256 *ps = &p;
+    unsigned pos[256];
+    unsigned count[256] = {0};
+    int *b = base;
+    size_t size = 4;
+    while (b < base + length * size) {
+        unsigned char key = *b & 0xFF;
+        ;
+        count[key]++;
+        setbit(ps, key);
+        b += size;
+    }
+    int nextset = getnextset(ps, 0);
+    int lastpos = 0;
+    int lastcount = 0;
+    while (nextset != -1) {
+        poscalc++;
+        pos[nextset] = lastpos + lastcount;
+        lastcount = count[nextset];
+        lastpos = pos[nextset];
+        nextset = getnextset(ps, nextset);
+    }
+    printf("%d", lastpos);
+}
+
+//This is meant as a reference to calculate overhead of ps256
+
+static void loop256PerformanceTest(size_t length, int* base) {
+    int *b = base;
+    int size = 4;
+    unsigned count[256] = {0};
+    while (length--) {
+        unsigned char key = *b & 0xFF;
+        count[key]++;
+        b += size;
+    }
+
+    //calculate bucket positions
+    unsigned pos[256];
+    pos[0] = 0;
+    int i;
+    for (i = 0; i < 255; i++) {
+        pos[i + 1] = pos[i] + count[i];
+    }
+    printf("%d", pos[i - 1]);
+}
+
 int main(int argc, char** argv) {
-    //    littleendiannesstest();
-//    ps256test();
+    //    littleendiannesstest();return 0;
+    //        ps256CorrectnessTest();
     setlocale(LC_ALL, "");
-    char sorttype = 'r';
-    size_t length = 128.;
+    char sorttype = 's';
+    size_t length = 1;
     if (argc > 1) {
         sorttype = argv[1][0];
     }
     if (argc > 2) {
         length = atol(argv[2]);
     }
+    int *base = randomInts(length);
+    int i;
+    switch (sorttype) {
+        case 'p':
+            for (i = 0; i < 100; i++) {
+                ps256PerformanceTest(length, base);
+            }
+            return 0;
+        case 'l':
+            for (i = 0; i < 100; i++) {
+                loop256PerformanceTest(length, base);
+            }
 
-    memaccesstest(sorttype, length);
+            return 0;
+    }
+    sortFunctionTest(sorttype, length);
     //    rsort_lsb_copy(sorted, arr, sizeof (arr) / sizeof (arr[0]), sizeof (arr[0]), intkey);
     //    printInts(sorted, sizeof (arr) / sizeof (arr[0]));
     return (EXIT_SUCCESS);

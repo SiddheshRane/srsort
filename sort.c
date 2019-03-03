@@ -7,8 +7,8 @@
 #include <time.h>
 #include <stdlib.h>
 #define KEY_SIZE 32
-extern unsigned totloops, loop0, loop1;
-extern unsigned long loop256;
+extern unsigned selfcalls, counts, poscalc;
+extern unsigned long shuffles;
 /*
  * GLOBALS.
  */
@@ -115,7 +115,7 @@ int rsort_lsb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
                 break;
             }
             b = base + pos[key + 1] * size;
-            totloops++;
+            selfcalls++;
             continue;
         }
         if (newpos == b) {
@@ -130,7 +130,7 @@ int rsort_lsb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         count[key]--;
         pos[key]++;
         numswaps++;
-        totloops++;
+        selfcalls++;
     }
 }
 
@@ -201,11 +201,11 @@ void print256(ps256*ps) {
     puts(buff);
 }
 
-inline void setbit(ps256 *ps, unsigned char index) {
+void setbit(ps256 *ps, unsigned char index) {
     ps->b[index >> 6] |= 1ul << (index & 0x3F);
 }
 
-inline int numset(ps256 *ps) {
+int numset(ps256 *ps) {
     int num;
     num = popcnt(ps->b[0]);
     num += popcnt(ps->b[1]);
@@ -270,38 +270,23 @@ ___x:
  */
 int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
     //First Pass : Count Bucket Sizes
-    ps256 ps = {0};
     void *b = base;
     size_t length = arraylength;
     while (length--) {
         unsigned char key = getkey(b, msdbytes);
         count[key]++;
-        setbit(&ps, key);
         b += size;
+        counts++;
     }
-    printf("set %d | ", numset(&ps)); //number of bits that are set
-    print256(&ps);
+
     //calculate bucket positions
     unsigned pos[256];
-    //    pos[0] = 0;
+    pos[0] = 0;
     int i;
-    //    for (i = 0; i < 255; i++) {
-    //        pos[i + 1] = pos[i] + count[i];
-    //    }
-    int nextset = getnextset(&ps, 0);
-    int lastpos = 0;
-    int lastcount = 0;
-    int debugposetcount = 0;
-    while (nextset != -1) {
-        pos[nextset] = lastpos + lastcount;
-        lastcount = count[nextset];
-        lastpos = pos[nextset];
-        debugposetcount++;
-        nextset = getnextset(&ps, nextset);
+    for (i = 0; i < 255; i++) {
+        pos[i + 1] = pos[i] + count[i];
+        poscalc++;
     }
-    printf("Pos loop set %d counts\n", debugposetcount);
-    printInts(count, 256);
-    printInts(pos, 256);
     //Second Pass : Swap elements in-place into correct buckets
     char tmp[size]; //for swapping
 
@@ -329,13 +314,13 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     while (b < base + arraylength * size) {
         unsigned char key = getkey(b, msdbytes);
         void *newpos = base + pos[key] * size;
+        shuffles++;
         if (count[key] == 0) {
             //entire bucket is sorted. directly jump to next bucket
             if (key == 255) {
                 break;
             }
             b = base + pos[key + 1] * size;
-            loops++;
             continue;
         }
         if (newpos == b) {
@@ -350,9 +335,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         count[key]--;
         pos[key]++;
         numswaps++;
-        loops++;
     }
-    totloops += loops;
 
     if (msdbytes == 0) {
         return 0; //we have finished all radixes
@@ -363,9 +346,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     for (i = 255; i >= 0; i--) {
         counti = counti - pos[i];
         if (counti == 0) {
-            loop0++;
         } else if (counti == 1) {
-            loop1++;
         } else if (counti == 2) { //compare and swap
             unsigned radix = msdbytes;
             void *a = base + pos[i] * size;
@@ -382,7 +363,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
             } while (radix--);
         } else {
             //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-            loop256++;
+            selfcalls++;
             rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
         }
         counti = pos[i];
@@ -466,7 +447,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
         //        printInts(base, arraylength);
         loops++;
     }
-    totloops += loops;
+    selfcalls += loops;
     //    printf("%u count--, %u loops for %lu numbers\n", numswaps, loops,arraylength);
     //    clock_gettime(CLOCK_MONOTONIC, &after);
     //    printf("%u swaps, %lu distance, %lu ns\n", numswaps, swapdistance / size, nanodiff(after.tv_nsec, before.tv_nsec));
@@ -480,9 +461,9 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
     for (i = 15; i >= 0; i--) {
         counti = counti - pos[i];
         if (counti == 0) {
-            loop0++;
+            counts++;
         } else if (counti == 1) {
-            loop1++;
+            poscalc++;
         } else
             if (1) {
             if (counti == 2) {
@@ -509,7 +490,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
                 //                printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
                 rsort_msb16(base + pos[i] * size, counti, size, getkey, msdbytes, count);
             }
-            loop256++;
+            shuffles++;
         }
         counti = pos[i];
     }
@@ -518,9 +499,10 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
 
 typedef unsigned char (*keyextractor)(const void* record, unsigned radix);
 
-static void* countbuckets(void* start, void* end, size_t size, unsigned int count[256], ps256* ps, keyextractor getkey, unsigned radix, unsigned char bucket) {
+static inline void* countbuckets(void* start, void* end, size_t size, unsigned int count[256], ps256* ps, keyextractor getkey, unsigned radix, unsigned char bucket) {
     void* b = start;
-    while (b < end && bucket == getkey(b, radix - 1)) {
+    while (b < end && bucket == getkey(b, radix + 1)) {
+        counts++;
         unsigned char key = getkey(b, radix);
         count[key]++;
         setbit(ps, key);
@@ -529,26 +511,24 @@ static void* countbuckets(void* start, void* end, size_t size, unsigned int coun
     return b;
 }
 
-static void unshuffle(void* start, void *end, size_t size, unsigned int count[256], unsigned int pos[256], ps256* ps, keyextractor getkey, unsigned radix) {
+static inline void unshuffle(void* start, void *end, size_t size, unsigned int count[256], unsigned int pos[256], ps256* ps, keyextractor getkey, unsigned radix) {
     //Calculate pos from count and ps
+    ps256 setbits = *ps;
     int nextset = getnextset(ps, 0);
     int lastpos = 0;
     int lastcount = 0;
-    int debugposetcount = 0;
     while (nextset != -1) {
+        poscalc++;
         pos[nextset] = lastpos + lastcount;
         lastcount = count[nextset];
         lastpos = pos[nextset];
-        nextset = getnextset(&ps, nextset);
-        debugposetcount++;
+        nextset = getnextset(ps, nextset);
     }
-    printf("Pos loop set %d counts\n", debugposetcount);
-    printInts(count, 256);
-    printInts(pos, 256);
 
     //Now unshuffle back to partial order
     void* b = start;
     while (b < end) { //whether end is inclusive or exclusive does not change correctness of the the code
+        shuffles++;
         unsigned char key = getkey(b, radix);
         void *newpos = start + pos[key] * size;
         if (count[key] == 0) {
@@ -578,21 +558,48 @@ static void unshuffle(void* start, void *end, size_t size, unsigned int count[25
     }
 }
 
+_rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, unsigned count[256], unsigned pos[256]) {
+    void* bucketstart = base;
+    selfcalls++;
+    while (bucketstart < end) {
+        ps256 ps = {0};
+        unsigned char bucket = getkey(bucketstart, radix);
+        void *bucketend = countbuckets(bucketstart, end, size, count, &ps, getkey, radix - 1, bucket);
+        switch ((bucketend - bucketstart) / size) {
+            case 2:
+            {//can be sorted with a swap
+                unsigned rad = radix - 1;
+                void *a = bucketstart;
+                do {
+                    unsigned char akey = getkey(a, rad);
+                    unsigned char bkey = getkey(a + size, rad);
+                    if (akey > bkey) {
+                        //swap and return
+                        unsigned char tmp[size];
+                        memcpy(tmp, a, size);
+                        memcpy(a, a + size, size);
+                        memcpy(a + size, tmp, size);
+                        break;
+                    }
+                } while (rad--);
+                count[getkey(bucketstart + size, radix - 1)] = 0; //need to maintain invariant
+            }
+            case 1:
+                //only one item; already sorted
+                count[getkey(bucketstart, radix - 1)] = 0; //need to maintain invariant
+                bucketstart = bucketend;
+                break;
+            default:
+                unshuffle(bucketstart, bucketend, size, count, pos, &ps, getkey, radix - 1);
+                if (radix != 0) _rsort(bucketstart, size, bucketend, getkey, radix - 1, count, pos);
+        }
+        bucketstart = bucketend;
+    }
+}
+
 rsort(void* base, size_t size, unsigned int arraylength, keyextractor getkey, unsigned maxradix) {
     void* end = base + size*arraylength;
     unsigned count[256] = {0};
     unsigned pos[256]; //sparse array; no need to initialize
-
-}
-
-_rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, unsigned count[256], unsigned pos[256]) {
-    void* b = base;
-    while (b < end) {
-        unsigned char bucket = getkey(b, radix);
-        ps256 ps = {0};
-        void *bend = countbuckets(b, end, size, count, &ps, getkey, radix + 1, bucket);
-        unshuffle(b, bend, size, count, pos, &ps, getkey, radix + 1);
-        _rsort(b, size, bend, getkey, radix + 1, count, pos);
-        b = bend;
-    }
+    _rsort(base, size, end, getkey, maxradix, count, pos);
 }

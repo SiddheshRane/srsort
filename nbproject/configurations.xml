@@ -62,9 +62,8 @@
       </toolsSet>
       <compileType>
         <cTool>
-          <developmentMode>4</developmentMode>
+          <developmentMode>2</developmentMode>
           <standard>10</standard>
-          <commandLine>-DDO_PREFETCH</commandLine>
         </cTool>
       </compileType>
       <item path="iterable.h" ex="false" tool="3" flavor2="0">
@@ -96,7 +95,7 @@
       </toolsSet>
       <compileType>
         <cTool>
-          <developmentMode>5</developmentMode>
+          <developmentMode>6</developmentMode>
           <standard>10</standard>
         </cTool>
         <ccTool>
