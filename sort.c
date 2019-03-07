@@ -6,6 +6,7 @@
 #include "sys/types.h"
 #include <time.h>
 #include <stdlib.h>
+#include <assert.h>
 #define KEY_SIZE 32
 extern unsigned selfcalls, counts, poscalc;
 extern unsigned long shuffles;
@@ -39,7 +40,7 @@ typedef struct FileKey {
  * Read records from input file and write them in sorted order in the output file.
  * @param inputfd the input file
  * @param delimiter the char that acts as the delimiter string between records
- * @param outputfd the output file 
+ * @param outputfd the output file
  */
 void sortFile() {
     //Generate key table
@@ -62,22 +63,22 @@ int sort_main(int argc, char **argv) {
  * count buckets and positions
  * tell which buckets are sorted fully
  * which buckets are sorted till what radix
- * 
- * sort phases : 
- * 1)count&index 
+ *
+ * sort phases :
+ * 1)count&index
  *   requires: iterator over keys, keys of some fixed length and the radix within the key.
  *   optional: actual length of the key? key type like numerical or alnum for short-circuiting options?(maybe not)
- *   output: return an array with bucket counts. 
+ *   output: return an array with bucket counts.
  *  optional: Also report on which buckets are fully sorted, though you might not know it because you dont have full view of the keys,
- *  Report for each bucket upto what radix the keys are sorted. Normally the caller would specify a radix and know that the 
- *   input is sorted atleast upto the input radix, but the count sort can note that radix beyond the one specified are also sorted. 
+ *  Report for each bucket upto what radix the keys are sorted. Normally the caller would specify a radix and know that the
+ *   input is sorted atleast upto the input radix, but the count sort can note that radix beyond the one specified are also sorted.
  *   This way the next invocation can skip the radix+1 and directly jump to the radix that needs sorting
- * 
+ *
  * 2)rearrange : rearranging the keys in memory so they go into correct buckets
  *   requires: the bucket counts for the supplied input range.
  *   rearrange the keys according to the bucket count, buffer the keys when the radix gets used up.
- *   
- *   
+ *
+ *
  */
 
 #define CLOCK_MONOTONIC 1
@@ -181,7 +182,7 @@ int rsort_lsb_copy(void* dest, void* base, size_t arraylength, size_t size, char
 }
 
 #define ffs(x) __builtin_ffsll(x)
-#define popcnt(x) __builtin_popcountl(x) 
+#define popcnt(x) __builtin_popcountl(x)
 
 typedef struct ps256 {
     //powerset 256: contains 256 bits to indicate presence
@@ -205,6 +206,10 @@ void setbit(ps256 *ps, unsigned char index) {
     ps->b[index >> 6] |= 1ul << (index & 0x3F);
 }
 
+void unsetbit(ps256 *ps, unsigned char index) {
+    ps->b[index >> 6] &= ~(1ul << (index & 0x3F));
+}
+
 int numset(ps256 *ps) {
     int num;
     num = popcnt(ps->b[0]);
@@ -215,13 +220,13 @@ int numset(ps256 *ps) {
 }
 
 /**
- * find the index of the rightmost set bit. 
+ * find the index of the rightmost set bit.
  * Modifies ps by zeroing the set bit
  * @return 0 to 255 if a bit is set at that index; -1 if no bit set
  **/
 int getnextset(ps256 *ps, unsigned char from) {
     //find the byte that contained the lastset, then search from ahead
-    int first, searchfrom = 0;
+    int first;
     unsigned long set;
     static void* startfromlong[] = {
         &&x___,
@@ -268,12 +273,12 @@ ___x:
 /*
  * Count should be zero initialized and have length 256
  */
-int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
+int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned bytenum, unsigned count[]) {
     //First Pass : Count Bucket Sizes
     void *b = base;
     size_t length = arraylength;
     while (length--) {
-        unsigned char key = getkey(b, msdbytes);
+        unsigned char key = getkey(b, bytenum);
         count[key]++;
         b += size;
         counts++;
@@ -297,7 +302,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
      * record which is in its correct position. In this case we advance forward in
      * the array.
      * Previously we would check the element key to know whether it is in its correct
-     * position. But in the worst case, the whole array could be sorted on the first 
+     * position. But in the worst case, the whole array could be sorted on the first
      * location and we would traverse the remaining sorted array to check whether it
      * is sorted. But we already have that information using the counts array.
      * We thus advance through the array skipping sorted sections using counts and pos.
@@ -306,13 +311,13 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
      * Branch prediction misses have also increased.
      * Contrary to our assumption, what has happened is that our loop over N records is
      * replaced with <N but >= 255 loop. So as we recurse deeper the value of N drastically reduces
-     * so N<<256. 
+     * so N<<256.
      */
     b = base;
     //    void* lastBucketStart = base + pos[lastNonZeroBucket] * size;
     //    printf("pos[%d]=%u \n", lastNonZeroBucket,pos[lastNonZeroBucket]);
     while (b < base + arraylength * size) {
-        unsigned char key = getkey(b, msdbytes);
+        unsigned char key = getkey(b, bytenum);
         void *newpos = base + pos[key] * size;
         shuffles++;
         if (count[key] == 0) {
@@ -337,19 +342,21 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         numswaps++;
     }
 
-    if (msdbytes == 0) {
+    if (bytenum == 0) {
         return 0; //we have finished all radixes
     }
-    msdbytes--;
-    unsigned counti = arraylength;
+    bytenum--;
+    unsigned lastpos = 0;
     loops = 0;
-    for (i = 255; i >= 0; i--) {
-        counti = counti - pos[i];
+    for (i = 0; i < 256; i++) {
+        unsigned counti = pos[i] - lastpos;
         if (counti == 0) {
         } else if (counti == 1) {
         } else if (counti == 2) { //compare and swap
-            unsigned radix = msdbytes;
-            void *a = base + pos[i] * size;
+            unsigned radix = bytenum;
+            //BUG: Below line is wrong because pos[i] no longer reflects position of bucket i but beyond it.
+            //void *a = base + pos[i] * size;
+            void *a = base + lastpos * size;
             do {
                 unsigned char akey = getkey(a, radix);
                 unsigned char bkey = getkey(a + size, radix);
@@ -359,14 +366,14 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
                     memcpy(a, a + size, size);
                     memcpy(a + size, tmp, size);
                     break;
-                }
+                } else if (akey < bkey)break;
             } while (radix--);
         } else {
             //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
             selfcalls++;
-            rsort_msb(base + pos[i] * size, counti, size, getkey, msdbytes, count);
+            rsort_msb(base + lastpos * size, counti, size, getkey, bytenum, count);
         }
-        counti = pos[i];
+        lastpos = pos[i];
     }
 
 }
@@ -399,7 +406,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
      * record which is in its correct position. In this case we advance forward in
      * the array.
      * Previously we would check the element key to know whether it is in its correct
-     * position. But in the worst case, the whole array could be sorted on the first 
+     * position. But in the worst case, the whole array could be sorted on the first
      * location and we would traverse the remaining sorted array to check whether it
      * is sorted. But we already have that information using the counts array.
      * We thus advance through the array skipping sorted sections using counts and pos.
@@ -408,7 +415,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
      * Branch prediction misses have also increased.
      * Contrary to our assumption, what has happened is that our loop over N records is
      * replaced with <N but >= 255 loop. So as we recurse deeper the value of N drastically reduces
-     * so N<<256. 
+     * so N<<256.
      */
     b = base;
     //    void* lastBucketStart = base + pos[lastNonZeroBucket] * size;
@@ -532,15 +539,20 @@ static inline void unshuffle(void* start, void *end, size_t size, unsigned int c
         unsigned char key = getkey(b, radix);
         void *newpos = start + pos[key] * size;
         if (count[key] == 0) {
+            unsigned long mask = (1 << ((key & 0x3F) + 1)) - 1;
+            mask = ~mask;
+            setbits.b[key >> 6] &= mask;
+            int jumptonext = getnextset(&setbits, key);
             //entire bucket is sorted. directly jump to next bucket
-            if (key == 255) {
+            if (jumptonext == -1) {
                 break;
             }
             /*Below line cannot be used because pos is now a sparse array.
             There is no guarantee that pos[key+1] is valid */
-            //b = base + pos[key + 1] * size; 
+            //b = base + pos[key + 1] * size;
+            b = start + pos[jumptonext] * size;
             //loops++;
-            b += size;
+            shuffles++;
             continue;
         }
         if (newpos == b) {
@@ -580,14 +592,13 @@ _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, 
                         memcpy(a, a + size, size);
                         memcpy(a + size, tmp, size);
                         break;
-                    }
+                    } else if (akey < bkey) break;
                 } while (rad--);
                 count[getkey(bucketstart + size, radix - 1)] = 0; //need to maintain invariant
             }
             case 1:
                 //only one item; already sorted
                 count[getkey(bucketstart, radix - 1)] = 0; //need to maintain invariant
-                bucketstart = bucketend;
                 break;
             default:
                 unshuffle(bucketstart, bucketend, size, count, pos, &ps, getkey, radix - 1);

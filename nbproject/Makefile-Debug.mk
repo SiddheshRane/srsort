@@ -68,22 +68,22 @@ ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/rsort: ${OBJECTFILES}
 ${OBJECTDIR}/main.o: main.c
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/main.o main.c
+	$(COMPILE.c) -g -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/main.o main.c
 
 ${OBJECTDIR}/sort.o: sort.c
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/sort.o sort.c
+	$(COMPILE.c) -g -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/sort.o sort.c
 
 ${OBJECTDIR}/timsort/timsort.o: timsort/timsort.c
 	${MKDIR} -p ${OBJECTDIR}/timsort
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort.o timsort/timsort.c
+	$(COMPILE.c) -g -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort.o timsort/timsort.c
 
 ${OBJECTDIR}/timsort/timsort_r.o: timsort/timsort_r.c
 	${MKDIR} -p ${OBJECTDIR}/timsort
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort_r.o timsort/timsort_r.c
+	$(COMPILE.c) -g -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort_r.o timsort/timsort_r.c
 
 # Subprojects
 .build-subprojects:

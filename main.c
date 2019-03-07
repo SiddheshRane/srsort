@@ -41,7 +41,7 @@ unsigned short wordkey(void *record, unsigned byteindex) {
 void printInts(int *arr, size_t size) {
     printf("[ ");
     while (size--) {
-        printf("%x ", *arr);
+        printf("%d ", *arr);
         arr++;
     }
     printf("]\n");
@@ -68,16 +68,16 @@ static int compare(const void *a, const void *b) {
     return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
-//#define timeit(sortname, sortcall) \
-//    clock_gettime(CLOCK_MONOTONIC, &before);\
-//    sortcall;\
-//    clock_gettime(CLOCK_MONOTONIC, &after);\
-//    printf(sortname "   took %2lus %'11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
-//    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
-//    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
-//    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO");\
-
-#define timeit(sortname, sortcall) {sortcall;}
+#define timeit(sortname, sortcall) \
+    clock_gettime(CLOCK_MONOTONIC, &before);\
+    sortcall;\
+    clock_gettime(CLOCK_MONOTONIC, &after);\
+    printf(sortname "   took %2lus %'11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
+    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
+    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
+    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO"); \
+    
+//#define timeit(sortname, sortcall) {sortcall;}
 
 
 unsigned selfcalls = 0, counts = 0, poscalc = 0;
@@ -87,6 +87,7 @@ int isSorted(int* list, int size) {
     int i;
     for (i = 1; i < size; i++) {
         if (list[i] < list[i - 1]) {
+            printf("%x > %x\n", list[i - 1], list[i]);
             return 0;
         }
     }
@@ -111,6 +112,7 @@ static void sortFunctionTest(char sort, size_t length) {
             timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
             printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
             printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+
             break;
         case 's':
             timeit("siD", rsort(larger, sizeof (int), length, intkey, 4))
@@ -249,7 +251,7 @@ int main(int argc, char** argv) {
     //        ps256CorrectnessTest();
     setlocale(LC_ALL, "");
     char sorttype = 's';
-    size_t length = 1;
+    size_t length = 328;
     if (argc > 1) {
         sorttype = argv[1][0];
     }
@@ -264,7 +266,7 @@ int main(int argc, char** argv) {
                 ps256PerformanceTest(length, base);
             }
             return 0;
-        case 'l':
+        case '6':
             for (i = 0; i < 100; i++) {
                 loop256PerformanceTest(length, base);
             }

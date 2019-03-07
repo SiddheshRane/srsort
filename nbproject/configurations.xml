@@ -62,7 +62,6 @@
       </toolsSet>
       <compileType>
         <cTool>
-          <developmentMode>2</developmentMode>
           <standard>10</standard>
         </cTool>
       </compileType>
