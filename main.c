@@ -110,19 +110,27 @@ static void sortFunctionTest(char sort, size_t length) {
             break;
         case 'r':
             timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
-            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
+            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
+            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+
+            break;
+        case 'k':
+        {
+            timeit("SID", unsigned count[256] = {0}; krsort(larger, length, sizeof (int), intkey, 3, count))
+        }
+            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
             printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
 
             break;
         case 's':
             timeit("siD", rsort(larger, sizeof (int), length, intkey, 4))
-            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
+            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
             printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
             break;
         case 'x':
             timeit("SID", unsigned count16[16] = {0}; rsort_msb16(larger, length, sizeof (int), intkey, 7, count16))
             printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
-            printf("counts: %u poscalcs: %u 0+1: %u shufflesx   : %u\n", counts, poscalc, counts + poscalc, shuffles);
+            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
             break;
         case 'q':
             timeit("QCK", qsort(larger, length, sizeof (int), compare))
@@ -155,6 +163,10 @@ static void littleendiannesstest() {
     printf("intkey[2] : %x\n", intkey(&buf, 2));
     printf("intkey[3] : %x\n", intkey(&buf, 3));
     printf("intkey[4] : %x\n", intkey(&buf, 4));
+    int shift;
+    scanf("%d", &shift);
+    printf("~0 >> %d == %016lx\n", shift, (0xfffffffffffffffful << shift));
+    printf(" 1 << %d == %016lx\n", shift, (1ul >> shift));
     //    sort_main(argc, argv);
 
     unsigned char limit = 129;
@@ -171,19 +183,19 @@ typedef struct ps256 {
 static void ps256CorrectnessTest() {
     ps256 ps = {0};
     int i;
-    //        printf("num set | set bits\n");
-    //        for (i = 0; i < 256; i++) {
-    //            setbit(&ps, i);
-    //            printf("%3d %3d | ", i, getnextset(&ps, i));
-    //            print256(&ps);
-    //        }
-    //        printf("--- --- | \n");
-    //        memset(&ps, 0, sizeof(ps));
-    //        for (i = 255; i >= 0 ; i--) {
-    //            setbit(&ps, i);
-    //            printf("%3d %3d | ", i, getnextset(&ps, i));
-    //            print256(&ps);
-    //        }
+    printf("num set | set bits\n");
+    for (i = 0; i < 256; i++) {
+        setbit(&ps, i);
+        printf("%3d %3d | ", i, getnextset(&ps, i));
+        print256(&ps);
+    }
+    printf("--- --- | \n");
+    memset(&ps, 0, sizeof (ps));
+    for (i = 255; i >= 0; i--) {
+        setbit(&ps, i);
+        printf("%3d %3d | ", i, getnextset(&ps, i));
+        print256(&ps);
+    }
     ps256 psrand = {0x1, 0x2, 0x3, 0x4};
     int nex = 0;
 
@@ -191,7 +203,7 @@ static void ps256CorrectnessTest() {
     while ((nex = getnextset(&psrand, nex)) != -1) {
         printf("%d ", nex);
         print256(&psrand);
-
+        nex++;
     }
 
 }
@@ -247,26 +259,29 @@ static void loop256PerformanceTest(size_t length, int* base) {
 }
 
 int main(int argc, char** argv) {
-    //    littleendiannesstest();return 0;
-    //        ps256CorrectnessTest();
+    //    littleendiannesstest();
+    //            ps256CorrectnessTest(); 
+    //    return 0;
     setlocale(LC_ALL, "");
-    char sorttype = 's';
-    size_t length = 328;
+    char sorttype = 'k';
+    size_t length = 27;
     if (argc > 1) {
         sorttype = argv[1][0];
     }
     if (argc > 2) {
         length = atol(argv[2]);
     }
-    int *base = randomInts(length);
+    int *base;
     int i;
     switch (sorttype) {
         case 'p':
+            base = randomInts(length);
             for (i = 0; i < 100; i++) {
                 ps256PerformanceTest(length, base);
             }
             return 0;
         case '6':
+            base = randomInts(length);
             for (i = 0; i < 100; i++) {
                 loop256PerformanceTest(length, base);
             }

@@ -10,6 +10,31 @@
 #define KEY_SIZE 32
 extern unsigned selfcalls, counts, poscalc;
 extern unsigned long shuffles;
+
+#define BYTESWAP
+#ifdef BYTESWAP
+#define SWAP(a, b, size)                                                      \
+  do                                                                              \
+    {                                                                              \
+      size_t __size = (size);                                                      \
+      char *__a = (a), *__b = (b);                                              \
+      do                                                                      \
+        {                                                                      \
+          char __tmp = *__a;                                                      \
+          *__a++ = *__b;                                                      \
+          *__b++ = __tmp;                                                      \
+        } while (--__size > 0);                                                      \
+    } while (0)
+#else
+#define SWAP(a,b,size) \
+ do {\
+    char tmp[size]; \
+    memcpy(tmp, a, size);\
+    memcpy(a, b, size);\
+    memcpy(b, tmp, size);\
+ }while(0)\
+
+#endif
 /*
  * GLOBALS.
  */
@@ -220,11 +245,11 @@ int numset(ps256 *ps) {
 }
 
 /**
- * find the index of the rightmost set bit.
- * Modifies ps by zeroing the set bit
+ * find the index of the rightmost set bit starting from `from` number of bits.
+ * Rightmost bit index is 0.
  * @return 0 to 255 if a bit is set at that index; -1 if no bit set
  **/
-int getnextset(ps256 *ps, unsigned char from) {
+int getnextset(ps256 *ps, unsigned from) {
     //find the byte that contained the lastset, then search from ahead
     int first;
     unsigned long set;
@@ -233,40 +258,39 @@ int getnextset(ps256 *ps, unsigned char from) {
         &&_x__,
         &&__x_,
         &&___x,
+        &&____
     };
+    //This mask will be ANDed to 0 the rightmost bits we want to ignore.
+    unsigned long mask = (~0ul) << (from & 0x3f);
     goto *startfromlong[from >> 6];
 x___:
-    set = ps->b[0];
-    set = set & -set; //last set bit is active in this, rest all zero
+    set = mask & ps->b[0];
     if (set) {
         first = ffs(set);
-        ps->b[0] -= set;
         return first - 1;
     }
+    mask = ~0;
 _x__:
-    set = ps->b[1];
-    set = set & -set; //last set bit is active in this, rest all zero
+    set = mask & ps->b[1];
     if (set) {
         first = ffs(set);
-        ps->b[1] -= set;
         return first + 63;
     }
+    mask = ~0;
 __x_:
-    set = ps->b[2];
-    set = set & -set; //last set bit is active in this, rest all zero
+    set = mask & ps->b[2];
     if (set) {
         first = ffs(set);
-        ps->b[2] -= set;
         return first + 127;
     }
+    mask = ~0;
 ___x:
-    set = ps->b[3];
-    set = set & -set; //last set bit is active in this, rest all zero
+    set = mask & ps->b[3];
     if (set) {
         first = ffs(set);
-        ps->b[3] -= set;
         return first + 191;
     }
+____:
     return -1;
 }
 
@@ -333,9 +357,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
             b += size;
         } else {
             //key is not in correct position. Swap
-            memcpy(tmp, b, size);
-            memcpy(b, newpos, size);
-            memcpy(newpos, tmp, size);
+            SWAP(b, newpos, size);
         }
         count[key]--;
         pos[key]++;
@@ -362,9 +384,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
                 unsigned char bkey = getkey(a + size, radix);
                 if (akey > bkey) {
                     //swap and return
-                    memcpy(tmp, a, size);
-                    memcpy(a, a + size, size);
-                    memcpy(a + size, tmp, size);
+                    SWAP(a, a + size, size);
                     break;
                 } else if (akey < bkey)break;
             } while (radix--);
@@ -377,6 +397,8 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     }
 
 }
+
+// <editor-fold defaultstate="collapsed" desc="rsort16">
 
 int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned msdbytes, unsigned count[]) {
     //First Pass : Count Bucket Sizes
@@ -441,9 +463,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
             b += size;
         } else {
             //key is not in correct position. Swap
-            memcpy(tmp, b, size);
-            memcpy(b, newpos, size);
-            memcpy(newpos, tmp, size);
+            SWAP(b, newpos, size);
         }
         count[key]--;
         pos[key]++;
@@ -487,9 +507,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
                     bkey &= 0xF;
                     if (akey > bkey) {
                         //swap and return
-                        memcpy(tmp, a, size);
-                        memcpy(a, a + size, size);
-                        memcpy(a + size, tmp, size);
+                        SWAP(a, a + size, size);
                         break;
                     }
                 } while (radix--);
@@ -502,7 +520,7 @@ int rsort_msb16(void* base, size_t arraylength, size_t size, char (*getkey)(cons
         counti = pos[i];
     }
 
-}
+}// </editor-fold>
 
 typedef unsigned char (*keyextractor)(const void* record, unsigned radix);
 
@@ -520,7 +538,6 @@ static inline void* countbuckets(void* start, void* end, size_t size, unsigned i
 
 static inline void unshuffle(void* start, void *end, size_t size, unsigned int count[256], unsigned int pos[256], ps256* ps, keyextractor getkey, unsigned radix) {
     //Calculate pos from count and ps
-    ps256 setbits = *ps;
     int nextset = getnextset(ps, 0);
     int lastpos = 0;
     int lastcount = 0;
@@ -529,20 +546,17 @@ static inline void unshuffle(void* start, void *end, size_t size, unsigned int c
         pos[nextset] = lastpos + lastcount;
         lastcount = count[nextset];
         lastpos = pos[nextset];
-        nextset = getnextset(ps, nextset);
+        nextset = getnextset(ps, nextset + 1);
     }
 
     //Now unshuffle back to partial order
     void* b = start;
-    while (b < end) { //whether end is inclusive or exclusive does not change correctness of the the code
+    while (b < end) { //whether end is inclusive or exclusive does not change correctness of the code
         shuffles++;
         unsigned char key = getkey(b, radix);
         void *newpos = start + pos[key] * size;
         if (count[key] == 0) {
-            unsigned long mask = (1 << ((key & 0x3F) + 1)) - 1;
-            mask = ~mask;
-            setbits.b[key >> 6] &= mask;
-            int jumptonext = getnextset(&setbits, key);
+            int jumptonext = getnextset(ps, key + 1);
             //entire bucket is sorted. directly jump to next bucket
             if (jumptonext == -1) {
                 break;
@@ -552,7 +566,6 @@ static inline void unshuffle(void* start, void *end, size_t size, unsigned int c
             //b = base + pos[key + 1] * size;
             b = start + pos[jumptonext] * size;
             //loops++;
-            shuffles++;
             continue;
         }
         if (newpos == b) {
@@ -560,10 +573,7 @@ static inline void unshuffle(void* start, void *end, size_t size, unsigned int c
             b += size;
         } else {
             //key is not in correct position. Swap
-            unsigned char tmp[size];
-            memcpy(tmp, b, size);
-            memcpy(b, newpos, size);
-            memcpy(newpos, tmp, size);
+            SWAP(b, newpos, size);
         }
         count[key]--;
         pos[key]++;
@@ -572,7 +582,6 @@ static inline void unshuffle(void* start, void *end, size_t size, unsigned int c
 
 _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, unsigned count[256], unsigned pos[256]) {
     void* bucketstart = base;
-    selfcalls++;
     while (bucketstart < end) {
         ps256 ps = {0};
         unsigned char bucket = getkey(bucketstart, radix);
@@ -587,10 +596,7 @@ _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, 
                     unsigned char bkey = getkey(a + size, rad);
                     if (akey > bkey) {
                         //swap and return
-                        unsigned char tmp[size];
-                        memcpy(tmp, a, size);
-                        memcpy(a, a + size, size);
-                        memcpy(a + size, tmp, size);
+                        SWAP(a, a + size, size);
                         break;
                     } else if (akey < bkey) break;
                 } while (rad--);
@@ -602,10 +608,122 @@ _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, 
                 break;
             default:
                 unshuffle(bucketstart, bucketend, size, count, pos, &ps, getkey, radix - 1);
-                if (radix != 0) _rsort(bucketstart, size, bucketend, getkey, radix - 1, count, pos);
+                if (radix != 0) {
+                    selfcalls++;
+                    _rsort(bucketstart, size, bucketend, getkey, radix - 1, count, pos);
+                }
         }
         bucketstart = bucketend;
     }
+}
+
+int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned bytenum, unsigned count[]) {
+    //First Pass : Count Bucket Sizes
+    void *b = base;
+    ps256 p = {0};
+    ps256* ps = &p;
+    size_t length = arraylength;
+    while (length--) {
+        unsigned char key = getkey(b, bytenum);
+        count[key]++;
+        setbit(ps, key);
+        b += size;
+        counts++;
+    }
+
+    //calculate bucket positions
+    unsigned pos[256];
+    //Calculate pos from count and ps
+    ps256 setbits = *ps;
+    int nextset = getnextset(ps, 0);
+    int lastpos = 0;
+    int lastcount = 0;
+    while (nextset != -1) {
+        poscalc++;
+        pos[nextset] = lastpos + lastcount;
+        lastcount = count[nextset];
+        lastpos = pos[nextset];
+        nextset = getnextset(ps, nextset + 1);
+    }
+
+    //Second Pass : Swap elements in-place into correct buckets
+    unsigned numswaps = 0, loops = 0;
+    /* We proceed sequentially through the array. A record encountered is swapped
+     * into its correct location, bringing the previous occupant record now into
+     * our consideration. Same is repeated for this record too until we encounter
+     * record which is in its correct position. In this case we advance forward in
+     * the array.
+     * Previously we would check the element key to know whether it is in its correct
+     * position. But in the worst case, the whole array could be sorted on the first
+     * location and we would traverse the remaining sorted array to check whether it
+     * is sorted. But we already have that information using the counts array.
+     * We thus advance through the array skipping sorted sections using counts and pos.
+     */
+    b = base;
+    //    void* lastBucketStart = base + pos[lastNonZeroBucket] * size;
+    //    printf("pos[%d]=%u \n", lastNonZeroBucket,pos[lastNonZeroBucket]);
+    while (b < base + arraylength * size) {
+        unsigned char key = getkey(b, bytenum);
+        void *newpos = base + pos[key] * size;
+        shuffles++;
+        if (count[key] == 0) {
+            int jumptonext = getnextset(&setbits, key + 1);
+            //entire bucket is sorted. directly jump to next bucket
+            if (jumptonext == -1) {
+                break;
+            }
+            /*Below line cannot be used because pos is now a sparse array.
+            There is no guarantee that pos[key+1] is valid */
+            //b = base + pos[key + 1] * size;
+            b = base + pos[jumptonext] * size;
+            //loops++;
+            continue;
+        }
+        if (newpos == b) {
+            //unbeknownst to us, the record we have encountered is actually where it should be
+            b += size;
+        } else {
+            //key is not in correct position. Swap
+            SWAP(b, newpos, size);
+        }
+        count[key]--;
+        pos[key]++;
+        numswaps++;
+    }
+
+    if (bytenum == 0) {
+        return 0; //we have finished all radixes
+    }
+    bytenum--;
+    lastpos = 0;
+    int i = 0;
+    while ((i = getnextset(ps, i)) != -1) {
+        unsigned counti = pos[i] - lastpos;
+        if (counti == 0) {
+        } else if (counti == 1) {
+        } else if (counti == 2) { //compare and swap
+            unsigned radix = bytenum;
+            //BUG: Below line is wrong because pos[i] no longer reflects position of bucket i but beyond it.
+            //void *a = base + pos[i] * size;
+            void *a = base + lastpos * size;
+            do {
+                unsigned char akey = getkey(a, radix);
+                unsigned char bkey = getkey(a + size, radix);
+                if (akey > bkey) {
+                    //swap and return
+                    SWAP(a, a + size, size);
+                    break;
+                } else if (akey < bkey)break;
+            } while (radix--);
+        } else {
+            //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
+            selfcalls++;
+            krsort(base + lastpos * size, counti, size, getkey, bytenum, count);
+        }
+        lastpos = pos[i];
+        i++;
+    }
+
 }
 
 rsort(void* base, size_t size, unsigned int arraylength, keyextractor getkey, unsigned maxradix) {
