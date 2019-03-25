@@ -617,7 +617,7 @@ _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, 
     }
 }
 
-int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned bytenum, unsigned count[]) {
+int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned bytenum, unsigned count[]) {
     //First Pass : Count Bucket Sizes
     void *b = base;
     ps256 p = {0};
@@ -628,18 +628,17 @@ int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
         count[key]++;
         setbit(ps, key);
         b += size;
-        counts++;
+//        counts++;
     }
 
     //calculate bucket positions
     unsigned pos[256];
     //Calculate pos from count and ps
-    ps256 setbits = *ps;
     int nextset = getnextset(ps, 0);
     int lastpos = 0;
     int lastcount = 0;
     while (nextset != -1) {
-        poscalc++;
+//        poscalc++;
         pos[nextset] = lastpos + lastcount;
         lastcount = count[nextset];
         lastpos = pos[nextset];
@@ -665,9 +664,9 @@ int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
     while (b < base + arraylength * size) {
         unsigned char key = getkey(b, bytenum);
         void *newpos = base + pos[key] * size;
-        shuffles++;
+//        shuffles++;
         if (count[key] == 0) {
-            int jumptonext = getnextset(&setbits, key + 1);
+            int jumptonext = getnextset(ps, key + 1);
             //entire bucket is sorted. directly jump to next bucket
             if (jumptonext == -1) {
                 break;
@@ -688,7 +687,7 @@ int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
         }
         count[key]--;
         pos[key]++;
-        numswaps++;
+//        numswaps++;
     }
 
     if (bytenum == 0) {
@@ -699,8 +698,7 @@ int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
     int i = 0;
     while ((i = getnextset(ps, i)) != -1) {
         unsigned counti = pos[i] - lastpos;
-        if (counti == 0) {
-        } else if (counti == 1) {
+        if (counti == 1) {
         } else if (counti == 2) { //compare and swap
             unsigned radix = bytenum;
             //BUG: Below line is wrong because pos[i] no longer reflects position of bucket i but beyond it.
@@ -717,8 +715,8 @@ int krsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
             } while (radix--);
         } else {
             //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-            selfcalls++;
-            krsort(base + lastpos * size, counti, size, getkey, bytenum, count);
+//            selfcalls++;
+            srsort(base + lastpos * size, counti, size, getkey, bytenum, count);
         }
         lastpos = pos[i];
         i++;

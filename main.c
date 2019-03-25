@@ -14,13 +14,10 @@
 #include <string.h>
 #include "timsort/timsort.h"
 
-/*
- * 
- */
 unsigned long keycalls = 0;
 
 unsigned char intkey(void *record, unsigned radix) {
-    unsigned long i = (unsigned long) (*(unsigned int*) record);
+    unsigned int i = (*(unsigned int*) record);
     unsigned char c = (unsigned char) (i >> (radix * 8u));
     keycalls++;
     return c;
@@ -47,8 +44,9 @@ void printInts(int *arr, size_t size) {
     printf("]\n");
 }
 
+unsigned int seed=1234;
 int* randomInts(size_t length) {
-    srandom(1789);
+    srandom(seed);
     int* ints = malloc(sizeof (int) * length);
     int *i = ints;
     while (length--) {
@@ -75,10 +73,7 @@ static int compare(const void *a, const void *b) {
     printf(sortname "   took %2lus %'11luns\n", after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
     printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
     printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
-    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO"); \
-    
-//#define timeit(sortname, sortcall) {sortcall;}
-
+//    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO");
 
 unsigned selfcalls = 0, counts = 0, poscalc = 0;
 unsigned long shuffles = 0;
@@ -87,66 +82,87 @@ int isSorted(int* list, int size) {
     int i;
     for (i = 1; i < size; i++) {
         if (list[i] < list[i - 1]) {
-            printf("%x > %x\n", list[i - 1], list[i]);
+            printf("%x > %x at index %d\n", list[i - 1], list[i], i);
             return 0;
         }
     }
     return 1; //sorted
 }
 
-static void sortFunctionTest(char sort, size_t length) {
-    int *larger = randomInts(length);
-    //    int *dest = malloc(sizeof (int)*length);
-    //            printInts(larger, (length < 20 ? length : 20));
+typedef struct TestParams {
+    int numtests;
+    int samplelength;
+    int *testdata;
+} TestParams;
 
-    #define CLOCK_MONOTONIC 1
-    #define nanodiff(after,before) ( (before)< (after) ? (after)-(before) : 1000000000L - ((before)-(after)) )
-    struct timespec before, after;
+static TestParams getConstantVolumeSortTestParams(int samplelength) {
+    TestParams tp;
+    tp.samplelength = samplelength <= 0 ? 4 : samplelength;
+    int volume = 64000;
+    tp.numtests = volume / tp.samplelength;
+    tp.testdata = randomInts(volume);
+    return tp;
+}
 
-    switch (sort) {
-        case 't':
-            timeit("TIM", timsort(larger, length, sizeof (int), compare))
-            printf("compares: %'lu\n", compares);
-            break;
-        case 'r':
-            timeit("SID", unsigned count[256] = {0}; rsort_msb(larger, length, sizeof (int), intkey, 3, count))
-            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
-            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+#define CLOCK_MONOTONIC 1
+#define INITCLOCK     struct timespec before, after;
+#define BEGINBENCH      clock_gettime(CLOCK_MONOTONIC, &before);
+#define nanodiff(after,before) ( (before)< (after) ? (after)-(before) : 1000000000L - ((before)-(after)) )
+#define ENDBENCH clock_gettime(CLOCK_MONOTONIC, &after);\
+    printf("%s took %2lus %'11luns\n", __FUNCTION__, after.tv_sec - before.tv_sec, nanodiff(after.tv_nsec, before.tv_nsec));\
+    printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
+    printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
 
-            break;
-        case 'k':
-        {
-            timeit("SID", unsigned count[256] = {0}; krsort(larger, length, sizeof (int), intkey, 3, count))
-        }
-            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
-            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
-
-            break;
-        case 's':
-            timeit("siD", rsort(larger, sizeof (int), length, intkey, 4))
-            printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
-            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
-            break;
-        case 'x':
-            timeit("SID", unsigned count16[16] = {0}; rsort_msb16(larger, length, sizeof (int), intkey, 7, count16))
-            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
-            printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
-            break;
-        case 'q':
-            timeit("QCK", qsort(larger, length, sizeof (int), compare))
-            printf("compares: %'lu\n", compares);
-            break;
-        case 'l':
-            timeit("LSB",{
-                rsort_lsb(larger, length, sizeof (int), intkey, 0);
-                rsort_lsb(larger, length, sizeof (int), intkey, 1);
-                rsort_lsb(larger, length, sizeof (int), intkey, 2);
-                rsort_lsb(larger, length, sizeof (int), intkey, 3);
-            });
-            printf("keycalls: %'lu loops: %u\n", keycalls, selfcalls);
-
+static void quicktest(int samplelength) {
+    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+    INITCLOCK;
+    BEGINBENCH;
+    int i;
+    for (i = 0; i < tp.numtests; i++) {
+        qsort(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof(int), compare);
     }
-    free(larger);
+    ENDBENCH;
+    printf("compares: %'lu\n", compares);
+}
+
+static void timtest(int samplelength) {
+    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+    INITCLOCK;
+    BEGINBENCH;
+    int i;
+    for (i = 0; i < tp.numtests; i++) {
+        timsort(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof (int), compare);
+    }
+    ENDBENCH;
+    printf("compares: %'lu\n", compares);
+}
+
+static void radixsorttest(int samplelength) {
+    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+    INITCLOCK;
+    BEGINBENCH;
+    int i;
+    unsigned count[256] = {0};
+    for (i = 0; i < tp.numtests; i++) {
+        rsort_msb(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof (int), intkey, 3, count);
+    }
+    ENDBENCH;
+    printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
+    printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+}
+
+static void srsorttest(int samplelength) {
+    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+    INITCLOCK;
+    BEGINBENCH;
+    int i;
+    unsigned count[256] = {0};
+    for (i = 0; i < tp.numtests; i++) {
+        srsort(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof (int), intkey, 3, count);
+    }
+    ENDBENCH;
+    printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
+    printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
 }
 
 static void littleendiannesstest() {
@@ -259,11 +275,8 @@ static void loop256PerformanceTest(size_t length, int* base) {
 }
 
 int main(int argc, char** argv) {
-    //    littleendiannesstest();
-    //            ps256CorrectnessTest(); 
-    //    return 0;
     setlocale(LC_ALL, "");
-    char sorttype = 'k';
+    char sorttype = 's';
     size_t length = 27;
     if (argc > 1) {
         sorttype = argv[1][0];
@@ -271,6 +284,10 @@ int main(int argc, char** argv) {
     if (argc > 2) {
         length = atol(argv[2]);
     }
+    if (argc > 3) {
+        seed = atoi(&seed);
+    }
+
     int *base;
     int i;
     switch (sorttype) {
@@ -285,12 +302,15 @@ int main(int argc, char** argv) {
             for (i = 0; i < 100; i++) {
                 loop256PerformanceTest(length, base);
             }
-
-            return 0;
+        case 'r': radixsorttest(length);
+            break;
+        case 's': srsorttest(length);
+            break;
+        case 't': timtest(length);
+            break;
+        case 'q': quicktest(length);
+            break;
     }
-    sortFunctionTest(sorttype, length);
-    //    rsort_lsb_copy(sorted, arr, sizeof (arr) / sizeof (arr[0]), sizeof (arr[0]), intkey);
-    //    printInts(sorted, sizeof (arr) / sizeof (arr[0]));
     return (EXIT_SUCCESS);
 }
 
