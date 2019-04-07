@@ -8,8 +8,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #define KEY_SIZE 32
-extern unsigned selfcalls, counts, poscalc;
-extern unsigned long shuffles;
+extern unsigned selfcalls, counts, poscalc, numswaps,loops, shuffles;
 
 #define BYTESWAP
 #ifdef BYTESWAP
@@ -35,76 +34,6 @@ extern unsigned long shuffles;
  }while(0)\
 
 #endif
-/*
- * GLOBALS.
- */
-
-/*The record separating character. Generally newline*/
-char delimiter = '\n';
-/*The set of input files*/
-FILE* input;
-/*The pipe to the program that extracts keys from records*/
-int keyextractorpipe[2];
-/*Output file where records will be written*/
-int outputfd;
-
-typedef struct Key {
-    const char key[KEY_SIZE];
-} Key;
-
-/*
- * FILE BACKEND
- */
-typedef struct FileKey {
-    long startOffset;
-    int recordSize;
-    char keybuf[KEY_SIZE];
-} FileKey;
-
-/**
- * Read records from input file and write them in sorted order in the output file.
- * @param inputfd the input file
- * @param delimiter the char that acts as the delimiter string between records
- * @param outputfd the output file
- */
-void sortFile() {
-    //Generate key table
-    FILE* ktab = fopen("keytable", "w+");
-
-    FileKey k = {0};
-    int buf;
-
-
-}
-
-int sort_main(int argc, char **argv) {
-    input = fopen(argv[1], "r");
-
-}
-
-/*
- * Given records
- * Extract keys
- * count buckets and positions
- * tell which buckets are sorted fully
- * which buckets are sorted till what radix
- *
- * sort phases :
- * 1)count&index
- *   requires: iterator over keys, keys of some fixed length and the radix within the key.
- *   optional: actual length of the key? key type like numerical or alnum for short-circuiting options?(maybe not)
- *   output: return an array with bucket counts.
- *  optional: Also report on which buckets are fully sorted, though you might not know it because you dont have full view of the keys,
- *  Report for each bucket upto what radix the keys are sorted. Normally the caller would specify a radix and know that the
- *   input is sorted atleast upto the input radix, but the count sort can note that radix beyond the one specified are also sorted.
- *   This way the next invocation can skip the radix+1 and directly jump to the radix that needs sorting
- *
- * 2)rearrange : rearranging the keys in memory so they go into correct buckets
- *   requires: the bucket counts for the supplied input range.
- *   rearrange the keys according to the bucket count, buffer the keys when the radix gets used up.
- *
- *
- */
 
 #define CLOCK_MONOTONIC 1
 #define nanodiff(after,before) ( (before)< (after) ? (after)-(before) : 1000000000L - ((before)-(after)) )
@@ -213,6 +142,7 @@ typedef struct ps256 {
     //powerset 256: contains 256 bits to indicate presence
     u_int64_t b[4];
 } ps256;
+extern int getnextset(ps256* ps, unsigned from);
 
 void print256(ps256*ps) {
     char buff[128];
@@ -249,11 +179,82 @@ int numset(ps256 *ps) {
  * Rightmost bit index is 0.
  * @return 0 to 255 if a bit is set at that index; -1 if no bit set
  **/
+
 int getnextset(ps256 *ps, unsigned from) {
+    #ifndef UNROLLED_GETNEXT
     //find the byte that contained the lastset, then search from ahead
     int first;
     unsigned long set;
-    static void* startfromlong[] = {
+
+    /*This mask will be ANDed to 0 the rightmost bits we want to ignore.
+     *The left shift is always between [0,63] so there is no scope for undefined behaviour.
+     */
+    unsigned long mask = (~0ul) << (from & 0x3f);
+    //ffs will tell index within a long, but each long will have its offset
+    static const short offset[] = {-1, 63, 127, 191};
+
+    /*For-loop code actually reduces instruction level parallelism down to 1.5 uops/cycle
+     Switch case gives better results 1.75+ uops/cycle and gets inlined well.
+     */
+    //    unsigned i;
+    //    for (i = (from >> 6); i < 4; i++) {
+    //        set = mask & ps->b[i];
+    //        if (set) {
+    //            first = ffs(set);
+    //            return first + offset[i];
+    //        }
+    //        mask = ~0;
+    //    }
+    switch ((from) >> 6) {
+        case 0:
+            set = mask & ps->b[0];
+            if (set) {
+                first = ffs(set);
+                return first - 1;
+            }
+            mask = ~0;
+        case 1:
+            set = mask & ps->b[1];
+            if (set) {
+                first = ffs(set);
+                return first + 63;
+            }
+            mask = ~0;
+        case 2:
+            set = mask & ps->b[2];
+            if (set) {
+                first = ffs(set);
+                return first + 127;
+            }
+            mask = ~0;
+        case 3:
+            set = mask & ps->b[3];
+            if (set) {
+                first = ffs(set);
+                return first + 191;
+            }
+            mask = ~0;
+    }
+    return -1;
+
+    #else
+
+    /* The following code is basically an unrolled loop that uses computed gotos
+     * that directly jump to the correct code segment. Ideally it has to be 
+     * faster than switch case because comparisions are eliminated. 
+     * But in practice, it is slower because GCC cannot inline functions with
+     * computed gotos[1]. The switch variant gets inlined very well and for some
+     * reason has smaller number of branches.
+     * 
+     * Lesson learned: don't assume; profile, then optimize
+     * 
+     * [1] : http://gcc.gnu.org/onlinedocs/gcc/Inline.html
+     */
+
+    //find the byte that contained the lastset, then search from ahead
+    int first;
+    unsigned long set;
+    const void* startfromlong[] = {
         &&x___,
         &&_x__,
         &&__x_,
@@ -292,6 +293,8 @@ ___x:
     }
 ____:
     return -1;
+
+    #endif
 }
 
 /*
@@ -305,7 +308,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         unsigned char key = getkey(b, bytenum);
         count[key]++;
         b += size;
-        counts++;
+        //        counts++;
     }
 
     //calculate bucket positions
@@ -314,7 +317,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     int i;
     for (i = 0; i < 255; i++) {
         pos[i + 1] = pos[i] + count[i];
-        poscalc++;
+        //        poscalc++;
     }
     //Second Pass : Swap elements in-place into correct buckets
     char tmp[size]; //for swapping
@@ -343,7 +346,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
     while (b < base + arraylength * size) {
         unsigned char key = getkey(b, bytenum);
         void *newpos = base + pos[key] * size;
-        shuffles++;
+        //        shuffles++;
         if (count[key] == 0) {
             //entire bucket is sorted. directly jump to next bucket
             if (key == 255) {
@@ -361,7 +364,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
         }
         count[key]--;
         pos[key]++;
-        numswaps++;
+        //        numswaps++;
     }
 
     if (bytenum == 0) {
@@ -390,7 +393,7 @@ int rsort_msb(void* base, size_t arraylength, size_t size, char (*getkey)(const 
             } while (radix--);
         } else {
             //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-            selfcalls++;
+            //            selfcalls++;
             rsort_msb(base + lastpos * size, counti, size, getkey, bytenum, count);
         }
         lastpos = pos[i];
@@ -617,6 +620,8 @@ _rsort(void* base, size_t size, void *end, keyextractor getkey, unsigned radix, 
     }
 }
 
+#define STATS 1
+
 int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const void*record, unsigned radix), unsigned bytenum, unsigned count[]) {
     //First Pass : Count Bucket Sizes
     void *b = base;
@@ -628,7 +633,7 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
         count[key]++;
         setbit(ps, key);
         b += size;
-//        counts++;
+        if (STATS) counts++;
     }
 
     //calculate bucket positions
@@ -638,7 +643,7 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
     int lastpos = 0;
     int lastcount = 0;
     while (nextset != -1) {
-//        poscalc++;
+        if (STATS) poscalc++;
         pos[nextset] = lastpos + lastcount;
         lastcount = count[nextset];
         lastpos = pos[nextset];
@@ -646,7 +651,6 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
     }
 
     //Second Pass : Swap elements in-place into correct buckets
-    unsigned numswaps = 0, loops = 0;
     /* We proceed sequentially through the array. A record encountered is swapped
      * into its correct location, bringing the previous occupant record now into
      * our consideration. Same is repeated for this record too until we encounter
@@ -664,7 +668,7 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
     while (b < base + arraylength * size) {
         unsigned char key = getkey(b, bytenum);
         void *newpos = base + pos[key] * size;
-//        shuffles++;
+        if (STATS) shuffles++;
         if (count[key] == 0) {
             int jumptonext = getnextset(ps, key + 1);
             //entire bucket is sorted. directly jump to next bucket
@@ -684,10 +688,10 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
         } else {
             //key is not in correct position. Swap
             SWAP(b, newpos, size);
+            if (STATS) numswaps++;
         }
         count[key]--;
         pos[key]++;
-//        numswaps++;
     }
 
     if (bytenum == 0) {
@@ -715,7 +719,7 @@ int srsort(void* base, size_t arraylength, size_t size, char (*getkey)(const voi
             } while (radix--);
         } else {
             //            printf("RADIX %u : BUCKET %3u : COUNT %4u\n", msdbytes - 1, i, counti);
-//            selfcalls++;
+            if (STATS) selfcalls++;
             srsort(base + lastpos * size, counti, size, getkey, bytenum, count);
         }
         lastpos = pos[i];

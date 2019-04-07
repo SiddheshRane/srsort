@@ -62,7 +62,7 @@
       </toolsSet>
       <compileType>
         <cTool>
-          <developmentMode>2</developmentMode>
+          <developmentMode>4</developmentMode>
           <standard>10</standard>
         </cTool>
       </compileType>
@@ -102,7 +102,7 @@
           </preprocessorList>
         </cTool>
         <ccTool>
-          <developmentMode>5</developmentMode>
+          <developmentMode>6</developmentMode>
           <preprocessorList>
             <Elem>NDEBUG</Elem>
           </preprocessorList>
@@ -111,7 +111,7 @@
           <developmentMode>5</developmentMode>
         </fortranCompilerTool>
         <asmTool>
-          <developmentMode>5</developmentMode>
+          <developmentMode>6</developmentMode>
         </asmTool>
       </compileType>
       <item path="iterable.h" ex="false" tool="3" flavor2="0">
@@ -133,6 +133,55 @@
       <item path="timsort/timsort.h" ex="false" tool="3" flavor2="0">
       </item>
       <item path="timsort/timsort_r.c" ex="false" tool="0" flavor2="0">
+      </item>
+    </conf>
+    <conf name="UnrolledLoop" type="1">
+      <toolsSet>
+        <compilerSet>default</compilerSet>
+        <dependencyChecking>true</dependencyChecking>
+        <rebuildPropChanged>false</rebuildPropChanged>
+      </toolsSet>
+      <compileType>
+        <cTool>
+          <developmentMode>6</developmentMode>
+          <standard>10</standard>
+          <preprocessorList>
+            <Elem>NDEBUG</Elem>
+            <Elem>UNROLLED_GETNEXT</Elem>
+          </preprocessorList>
+        </cTool>
+        <ccTool>
+          <developmentMode>6</developmentMode>
+          <preprocessorList>
+            <Elem>NDEBUG</Elem>
+          </preprocessorList>
+        </ccTool>
+        <fortranCompilerTool>
+          <developmentMode>5</developmentMode>
+        </fortranCompilerTool>
+        <asmTool>
+          <developmentMode>6</developmentMode>
+        </asmTool>
+      </compileType>
+      <item path="iterable.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="main.c" ex="false" tool="0" flavor2="10">
+      </item>
+      <item path="sort.c" ex="false" tool="0" flavor2="10">
+      </item>
+      <item path="timsort/AUTHORS" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="timsort/LICENSE" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="timsort/README.md" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="timsort/timsort-impl.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="timsort/timsort.c" ex="false" tool="0" flavor2="10">
+      </item>
+      <item path="timsort/timsort.h" ex="false" tool="3" flavor2="0">
+      </item>
+      <item path="timsort/timsort_r.c" ex="false" tool="0" flavor2="10">
       </item>
     </conf>
   </confs>

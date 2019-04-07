@@ -22,6 +22,14 @@ CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux/rsort
 CND_PACKAGE_DIR_Release=dist/Release/GNU-Linux/package
 CND_PACKAGE_NAME_Release=rsort.tar
 CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux/package/rsort.tar
+# UnrolledLoop configuration
+CND_PLATFORM_UnrolledLoop=GNU-Linux
+CND_ARTIFACT_DIR_UnrolledLoop=dist/UnrolledLoop/GNU-Linux
+CND_ARTIFACT_NAME_UnrolledLoop=rsort
+CND_ARTIFACT_PATH_UnrolledLoop=dist/UnrolledLoop/GNU-Linux/rsort
+CND_PACKAGE_DIR_UnrolledLoop=dist/UnrolledLoop/GNU-Linux/package
+CND_PACKAGE_NAME_UnrolledLoop=rsort.tar
+CND_PACKAGE_PATH_UnrolledLoop=dist/UnrolledLoop/GNU-Linux/package/rsort.tar
 #
 # include compiler specific variables
 #

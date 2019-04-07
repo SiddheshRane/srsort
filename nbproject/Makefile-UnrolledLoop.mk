@@ -23,7 +23,7 @@ AS=as
 # Macros
 CND_PLATFORM=GNU-Linux
 CND_DLIB_EXT=so
-CND_CONF=Debug
+CND_CONF=UnrolledLoop
 CND_DISTDIR=dist
 CND_BUILDDIR=build
 
@@ -68,22 +68,22 @@ ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/rsort: ${OBJECTFILES}
 ${OBJECTDIR}/main.o: main.c
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O2 -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/main.o main.c
+	$(COMPILE.c) -O3 -DNDEBUG -DUNROLLED_GETNEXT -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/main.o main.c
 
 ${OBJECTDIR}/sort.o: sort.c
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O2 -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/sort.o sort.c
+	$(COMPILE.c) -O3 -DNDEBUG -DUNROLLED_GETNEXT -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/sort.o sort.c
 
 ${OBJECTDIR}/timsort/timsort.o: timsort/timsort.c
 	${MKDIR} -p ${OBJECTDIR}/timsort
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O2 -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort.o timsort/timsort.c
+	$(COMPILE.c) -O3 -DNDEBUG -DUNROLLED_GETNEXT -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort.o timsort/timsort.c
 
 ${OBJECTDIR}/timsort/timsort_r.o: timsort/timsort_r.c
 	${MKDIR} -p ${OBJECTDIR}/timsort
 	${RM} "$@.d"
-	$(COMPILE.c) -g -O2 -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort_r.o timsort/timsort_r.c
+	$(COMPILE.c) -O3 -DNDEBUG -DUNROLLED_GETNEXT -std=c11 -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/timsort/timsort_r.o timsort/timsort_r.c
 
 # Subprojects
 .build-subprojects:

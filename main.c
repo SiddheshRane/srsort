@@ -14,6 +14,11 @@
 #include <string.h>
 #include "timsort/timsort.h"
 
+typedef struct ps256 {
+    //powerset 256: contains 256 bits to indicate presence
+    unsigned long b[4];
+} ps256;
+extern int getnextset(ps256* ps, unsigned from);
 unsigned long keycalls = 0;
 
 unsigned char intkey(void *record, unsigned radix) {
@@ -35,27 +40,6 @@ unsigned short wordkey(void *record, unsigned byteindex) {
     return i << (byteindex * 8);
 }
 
-void printInts(int *arr, size_t size) {
-    printf("[ ");
-    while (size--) {
-        printf("%d ", *arr);
-        arr++;
-    }
-    printf("]\n");
-}
-
-unsigned int seed=1234;
-int* randomInts(size_t length) {
-    srandom(seed);
-    int* ints = malloc(sizeof (int) * length);
-    int *i = ints;
-    while (length--) {
-        *i = random() & 0xffffffff;
-        i++;
-    }
-    return ints;
-}
-
 #define TYPE int
 unsigned long compares = 0;
 
@@ -66,6 +50,78 @@ static int compare(const void *a, const void *b) {
     return (da < db) ? -1 : (da == db) ? 0 : 1;
 }
 
+void printInts(int *arr, size_t size) {
+    printf("[ ");
+    while (size--) {
+        printf("%d ", *arr);
+        arr++;
+    }
+    printf("]\n");
+}
+
+unsigned int seed = 1;
+
+int* randomInts(size_t length) {
+    srandom(seed);
+    int* ints = malloc(sizeof (int) * length);
+    int *i = ints;
+    while (length--) {
+        *i = random() & 0x7fffffff;
+        i++;
+    }
+    return ints;
+}
+
+int* consecutiveAscendingInts(size_t length) {
+    int s = seed;
+    int* ints = malloc(sizeof (int) * length);
+    int *i = ints;
+    while (length--) {
+        *i = s++;
+        i++;
+    }
+    return ints;
+}
+
+int* consecutiveAscendingIntsBottom3(size_t length) {
+    int s = seed;
+    int* ints = malloc(sizeof (int) * length);
+    int *i = ints;
+    while (length--) {
+        *i = s++;
+        i++;
+    }
+    i--;
+    *i = random() & 0xffffff;
+    i--;
+    *i = random() & 0xfff;
+    i--;
+    *i = random() & 0xf;
+
+    return ints;
+}
+
+
+int* randomAscendingInts(size_t length) {
+    int* ints = randomInts(length);
+    timsort(ints, length, sizeof (int), compare);
+    compares = 0;
+    return ints;
+}
+
+int* allSameInts(size_t length) {
+    int* ints = malloc(sizeof (int) * length);
+    int *i = ints;
+    while (length--) {
+        *i = seed;
+        i++;
+    }
+    return ints;
+}
+
+
+
+
 #define timeit(sortname, sortcall) \
     clock_gettime(CLOCK_MONOTONIC, &before);\
     sortcall;\
@@ -75,8 +131,8 @@ static int compare(const void *a, const void *b) {
     printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
 //    printf("Sorted: %s\n", isSorted(larger, length) ? "YES" : "NO");
 
-unsigned selfcalls = 0, counts = 0, poscalc = 0;
-unsigned long shuffles = 0;
+unsigned selfcalls = 0, counts = 0, poscalc = 0, loops = 0, numswaps = 0;
+unsigned shuffles = 0;
 
 int isSorted(int* list, int size) {
     int i;
@@ -95,12 +151,34 @@ typedef struct TestParams {
     int *testdata;
 } TestParams;
 
-static TestParams getConstantVolumeSortTestParams(int samplelength) {
+static TestParams getConstantVolumeSortTestParams(int samplelength, char testtype) {
     TestParams tp;
+    int volume = 1000;
     tp.samplelength = samplelength <= 0 ? 4 : samplelength;
-    int volume = 64000;
+    if (samplelength > volume) volume = samplelength;
     tp.numtests = volume / tp.samplelength;
-    tp.testdata = randomInts(volume);
+    switch (testtype) {
+        case '/':
+            printf("consecutiveAscendingInts\n");
+            tp.testdata = consecutiveAscendingInts(volume);
+            break;
+        case '%':
+            printf("randomAscendingInts\n");
+            tp.testdata = randomAscendingInts(volume);
+            break;
+        case '=':
+            printf("allSameInts = %u\n", seed);
+            tp.testdata = allSameInts(volume);
+            break;
+        case '+':
+            printf("consecutiveAscendingIntsBottom3\n");
+            tp.testdata = consecutiveAscendingIntsBottom3(volume);
+            break;
+        case 'r':
+        default:
+            printf("randomInts\n");
+            tp.testdata = randomInts(volume);
+    }
     return tp;
 }
 
@@ -113,20 +191,19 @@ static TestParams getConstantVolumeSortTestParams(int samplelength) {
     printf("start %lus %luns\n", before.tv_sec, before.tv_nsec);\
     printf("end   %lus %luns\n", after.tv_sec, after.tv_nsec);\
 
-static void quicktest(int samplelength) {
-    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+
+static void quicktest(TestParams tp) {
     INITCLOCK;
     BEGINBENCH;
     int i;
     for (i = 0; i < tp.numtests; i++) {
-        qsort(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof(int), compare);
+        qsort(tp.testdata + tp.samplelength*i, tp.samplelength, sizeof (int), compare);
     }
     ENDBENCH;
     printf("compares: %'lu\n", compares);
 }
 
-static void timtest(int samplelength) {
-    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+static void timtest(TestParams tp) {
     INITCLOCK;
     BEGINBENCH;
     int i;
@@ -137,8 +214,7 @@ static void timtest(int samplelength) {
     printf("compares: %'lu\n", compares);
 }
 
-static void radixsorttest(int samplelength) {
-    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+static void radixsorttest(TestParams tp) {
     INITCLOCK;
     BEGINBENCH;
     int i;
@@ -148,11 +224,10 @@ static void radixsorttest(int samplelength) {
     }
     ENDBENCH;
     printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
-    printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+    printf("counts: %u poscalcs: %u 0+1: %u %u swaps in %u shuffles\n", counts, poscalc, counts + poscalc, numswaps, shuffles);
 }
 
-static void srsorttest(int samplelength) {
-    TestParams tp = getConstantVolumeSortTestParams(samplelength);
+static void srsorttest(TestParams tp) {
     INITCLOCK;
     BEGINBENCH;
     int i;
@@ -162,7 +237,8 @@ static void srsorttest(int samplelength) {
     }
     ENDBENCH;
     printf("keycalls: %'lu selfcalls: %u\n", keycalls, selfcalls);
-    printf("counts: %u poscalcs: %u 0+1: %u shuffles: %u\n", counts, poscalc, counts + poscalc, shuffles);
+    printf("counts: %u poscalcs: %u 0+1: %u %u swaps in %u shuffles\n", counts, poscalc, counts + poscalc, numswaps, shuffles);
+
 }
 
 static void littleendiannesstest() {
@@ -190,11 +266,6 @@ static void littleendiannesstest() {
     char charr[4] = {'o', 'n', 'k', 0};
     printf("char limit:%d, hex:%x, charr[limit]=%c\n", limit, limit, charr[limit]);
 }
-
-typedef struct ps256 {
-    //powerset 256: contains 256 bits to indicate presence
-    unsigned long b[4];
-} ps256;
 
 static void ps256CorrectnessTest() {
     ps256 ps = {0};
@@ -277,15 +348,22 @@ static void loop256PerformanceTest(size_t length, int* base) {
 int main(int argc, char** argv) {
     setlocale(LC_ALL, "");
     char sorttype = 's';
+    char testtype = 'r';
     size_t length = 27;
+
     if (argc > 1) {
         sorttype = argv[1][0];
     }
     if (argc > 2) {
+        //sort sample length
         length = atol(argv[2]);
     }
     if (argc > 3) {
-        seed = atoi(&seed);
+        testtype = argv[3][0];
+    }
+    if (argc > 4) {
+        //seed for random number
+        seed = atoi(argv[4]);
     }
 
     int *base;
@@ -302,13 +380,18 @@ int main(int argc, char** argv) {
             for (i = 0; i < 100; i++) {
                 loop256PerformanceTest(length, base);
             }
-        case 'r': radixsorttest(length);
+    }
+
+    TestParams tp = getConstantVolumeSortTestParams(length, testtype);
+
+    switch (sorttype) {
+        case 'r': radixsorttest(tp);
             break;
-        case 's': srsorttest(length);
+        case 's': srsorttest(tp);
             break;
-        case 't': timtest(length);
+        case 't': timtest(tp);
             break;
-        case 'q': quicktest(length);
+        case 'q': quicktest(tp);
             break;
     }
     return (EXIT_SUCCESS);
